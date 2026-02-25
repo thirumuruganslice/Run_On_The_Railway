@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Subway Surfers — Run on the Railway</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Bangers&family=Lilita+One&family=Poppins:wght@400;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="flashOverlay"></div>
+
+    <!-- HUD -->
+    <div id="hud">
+        <div class="hud-left">
+            <div class="hud-score-box">
+                <span class="hud-label">SCORE</span>
+                <span id="hudScore" class="hud-value">0</span>
+            </div>
+            <div class="hud-coin-box">
+                <span class="coin-icon-hud"></span>
+                <span id="hudCoins" class="hud-value">0</span>
+            </div>
+        </div>
+        <div class="hud-right">
+            <div class="hud-distance-box">
+                <span id="hudDistance" class="hud-dist">0m</span>
+            </div>
+            <button id="btnPause" class="hud-btn" aria-label="Pause">❚❚</button>
+            <button id="btnMute" class="hud-btn" aria-label="Mute">🔊</button>
+        </div>
+        <div id="hudMultiplier" class="hud-multiplier"></div>
+        <div id="hudPowerup" class="hud-powerup"></div>
+    </div>
+
+    <!-- START SCREEN -->
+    <div id="startScreen" class="screen">
+        <div class="screen-card start-card">
+            <div class="game-logo">
+                <span class="logo-subway">SUBWAY</span>
+                <span class="logo-surfers">SURFERS</span>
+                <span class="logo-subtitle">— Run on the Railway —</span>
+            </div>
+            <div id="startHigh" class="high-score-line"></div>
+            <button id="btnPlay" class="btn-primary btn-play">
+                <span class="btn-text">▶ TAP TO PLAY</span>
+            </button>
+            <div class="controls-hint">
+                <span>← → Lanes</span>
+                <span>↑ Jump</span>
+                <span>↓ Roll</span>
+                <span>P Pause</span>
+            </div>
+            <div class="swipe-hint">On mobile: Swipe to move!</div>
+        </div>
+    </div>
+
+    <!-- GAME OVER SCREEN -->
+    <div id="gameOverScreen" class="screen" style="display:none">
+        <div class="screen-card gameover-card">
+            <div class="gameover-title">BUSTED!</div>
+            <div class="gameover-subtitle">The inspector caught you!</div>
+            <div class="gameover-stats">
+                <div class="stat">
+                    <span class="stat-icon">🏃</span>
+                    <span class="stat-value" id="finalScore">0</span>
+                    <span class="stat-label">Score</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-icon">🪙</span>
+                    <span class="stat-value coin-color" id="finalCoins">0</span>
+                    <span class="stat-label">Coins</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-icon">🏆</span>
+                    <span class="stat-value best-color" id="finalBest">0</span>
+                    <span class="stat-label">Best</span>
+                </div>
+            </div>
+            <div id="newBestBadge" class="new-best" style="display:none">🏆 NEW HIGH SCORE!</div>
+            <button id="btnRestart" class="btn-primary btn-play">
+                <span class="btn-text">↻ PLAY AGAIN</span>
+            </button>
+            <button id="btnHome" class="btn-secondary">🏠 HOME</button>
+        </div>
+    </div>
+
+    <!-- PAUSE SCREEN -->
+    <div id="pauseScreen" class="screen" style="display:none">
+        <div class="screen-card">
+            <div class="pause-title">PAUSED</div>
+            <button id="btnResume" class="btn-primary btn-play">
+                <span class="btn-text">▶ RESUME</span>
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="js/game.js"></script>
+</body>
+
+</html>
