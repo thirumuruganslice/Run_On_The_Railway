@@ -15,17 +15,17 @@
     const RUN_SPEED = 0.38;
     const SPEED_INC = 0.0001;
     const MAX_SPEED = 0.72;
-    const JUMP_VEL = 0.28;
-    const GRAVITY = -0.012;
-    const ROLL_DUR = 32;
-    const LANE_SWITCH = 0.22;
-    const COIN_SPIN = 0.06;
+    const JUMP_VEL = 0.26;
+    const GRAVITY = -0.011;
+    const ROLL_DUR = 28;
+    const LANE_SWITCH = 0.14;
+    const COIN_SPIN = 0.045;
     const GROUND_Y = 0;
-    const CAM_Y = 4.8;
-    const CAM_Z = 9.5;
-    const CAM_LOOKAT_Y = 1.4;
-    const FOG_NEAR = 35;
-    const FOG_FAR = 120;
+    const CAM_Y = 6.5;
+    const CAM_Z = 11.0;
+    const CAM_LOOKAT_Y = 2.0;
+    const FOG_NEAR = 50;
+    const FOG_FAR = 160;
     const CHUNK_LEN = 200;
     const SPAWN_DIST = 110;
     const OBS_GAP_MIN = 12;
@@ -37,9 +37,10 @@
     const INVULN_DUR = 180;
     const GROUND_W = 28;
     const MILESTONES = [500, 1000, 2500, 5000, 10000, 25000, 50000];
-    const MAX_PARTICLES = 32;        // hard cap — prevents particle GC spikes
-    const COIN_ANIM_RANGE = 28;      // only animate coins this close to player
-    const SHADOW_UPDATE_INTERVAL = 3; // re-render shadow map every N frames
+    const MAX_PARTICLES = 48;        // hard cap — prevents particle GC spikes
+    const COIN_ANIM_RANGE = 35;      // only animate coins this close to player
+    const SHADOW_UPDATE_INTERVAL = 2; // re-render shadow map every N frames
+    const SMOOTH_FACTOR = 0.08;       // universal smooth interpolation
 
     /* ─────────── DOM refs ─────────── */
     const canvas = document.getElementById("gameCanvas");
@@ -389,10 +390,10 @@
     function getBuildTexPool() {
         if (_buildTexPool) return _buildTexPool;
         _buildTexPool = [];
-        const poolColors = ["#334455", "#884433", "#443355", "#3a3a55", "#555566", "#4a3344"];
-        const poolFloors = [4, 6, 5, 7, 4, 6];
-        const poolCols = [2, 3, 2, 3, 2, 3];
-        for (let k = 0; k < 6; k++) {
+        const poolColors = ["#3a5070", "#bb5533", "#554488", "#667788", "#446688", "#885544", "#4a6655", "#708090"];
+        const poolFloors = [4, 6, 5, 7, 4, 6, 5, 7];
+        const poolCols = [2, 3, 3, 3, 2, 3, 2, 3];
+        for (let k = 0; k < poolColors.length; k++) {
             _buildTexPool.push(makeBuildingTexture(poolColors[k], poolFloors[k], poolCols[k]));
         }
         return _buildTexPool;
@@ -400,89 +401,164 @@
 
     function makeBuildingTexture(color, floors, cols) {
         const c = document.createElement("canvas");
-        c.width = 128; c.height = 256; // reduced resolution — half memory, same visual
+        c.width = 256; c.height = 512;
         const ctx = c.getContext("2d");
-        // Base
-        ctx.fillStyle = color;
-        ctx.fillRect(0, 0, 128, 256);
-        // Brick-like lines
-        ctx.strokeStyle = "rgba(0,0,0,0.1)";
+
+        // Base wall with vertical gradient (lighter at top, darker at base)
+        const baseGrad = ctx.createLinearGradient(0, 0, 0, 512);
+        baseGrad.addColorStop(0, color);
+        baseGrad.addColorStop(0.85, color);
+        baseGrad.addColorStop(1, "#1a1a2a");
+        ctx.fillStyle = baseGrad;
+        ctx.fillRect(0, 0, 256, 512);
+
+        // Subtle brick / panel pattern
+        ctx.strokeStyle = "rgba(0,0,0,0.07)";
         ctx.lineWidth = 0.5;
-        for (let y = 0; y < 256; y += 8) {
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(128, y); ctx.stroke();
-            const off = (Math.floor(y / 8) % 2) * 8;
-            for (let x = off; x < 128; x += 16) {
-                ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 8); ctx.stroke();
+        for (let y = 0; y < 512; y += 12) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y); ctx.stroke();
+            const off = (Math.floor(y / 12) % 2) * 12;
+            for (let x = off; x < 256; x += 24) {
+                ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 12); ctx.stroke();
             }
         }
-        // Windows
-        const ww = 10, wh = 14, gap = 4;
+
+        // Floor separation ledges
+        const floorH = Math.floor(440 / Math.max(floors, 1));
+        for (let f = 0; f < floors; f++) {
+            const fy = 18 + f * floorH;
+            // Dark line (shadow under ledge)
+            ctx.fillStyle = "rgba(0,0,0,0.14)";
+            ctx.fillRect(0, fy + floorH - 4, 256, 4);
+            // Light line (top of ledge — highlights)
+            ctx.fillStyle = "rgba(255,255,255,0.07)";
+            ctx.fillRect(0, fy + floorH - 5, 256, 1);
+        }
+
+        // Windows with frames and depth
+        const ww = 18, wh = 24, gap = 6;
         const totalW = cols * (ww + gap);
-        const startX = (128 - totalW) / 2 + gap / 2;
+        const startX = (256 - totalW) / 2 + gap / 2;
         for (let r = 0; r < floors; r++) {
+            const fy = 24 + r * floorH;
             for (let cc = 0; cc < cols; cc++) {
-                const lit = Math.random() > 0.25;
-                ctx.fillStyle = lit ? "#ffeeaa" : "#222233";
-                ctx.fillRect(startX + cc * (ww + gap), 15 + r * 25, ww, wh);
+                const wx = startX + cc * (ww + gap);
+
+                // Window frame (light trim)
+                ctx.fillStyle = "rgba(255,255,255,0.13)";
+                ctx.fillRect(wx - 2, fy - 2, ww + 4, wh + 4);
+
+                // Window sill (small ledge at bottom)
+                ctx.fillStyle = "rgba(180,180,180,0.2)";
+                ctx.fillRect(wx - 3, fy + wh, ww + 6, 3);
+
+                const lit = Math.random() > 0.28;
                 if (lit) {
-                    ctx.fillStyle = "rgba(255,238,170,0.3)";
-                    ctx.fillRect(startX + cc * (ww + gap) - 1, 15 + r * 25 - 1, ww + 2, wh + 2);
+                    // Warm lit window with gradient
+                    const wGrad = ctx.createLinearGradient(wx, fy, wx, fy + wh);
+                    wGrad.addColorStop(0, "#ffeeaa");
+                    wGrad.addColorStop(0.6, "#ffdd66");
+                    wGrad.addColorStop(1, "#eebb33");
+                    ctx.fillStyle = wGrad;
+                    ctx.fillRect(wx, fy, ww, wh);
+                    // Warm glow halo
+                    ctx.fillStyle = "rgba(255,230,140,0.18)";
+                    ctx.fillRect(wx - 4, fy - 4, ww + 8, wh + 8);
+                    // Window cross divider
+                    ctx.fillStyle = "rgba(0,0,0,0.14)";
+                    ctx.fillRect(wx + ww / 2 - 0.5, fy, 1, wh);
+                    ctx.fillRect(wx, fy + wh / 2 - 0.5, ww, 1);
+                } else {
+                    // Dark window
+                    ctx.fillStyle = "#1a2236";
+                    ctx.fillRect(wx, fy, ww, wh);
+                    // Faint reflection
+                    ctx.fillStyle = "rgba(80,100,130,0.15)";
+                    ctx.fillRect(wx + 2, fy + 2, ww * 0.38, wh * 0.45);
                 }
             }
         }
+
+        // Ground floor (storefront / darker base)
+        const gfY = 512 - 55;
+        ctx.fillStyle = "rgba(0,0,0,0.22)";
+        ctx.fillRect(0, gfY, 256, 55);
+        if (Math.random() < 0.65) {
+            // Shop window
+            ctx.fillStyle = "rgba(255,240,180,0.3)";
+            ctx.fillRect(55, gfY + 10, 146, 36);
+            // Door
+            ctx.fillStyle = "rgba(60,45,30,0.7)";
+            ctx.fillRect(112, gfY + 12, 32, 34);
+            // Door knob
+            ctx.fillStyle = "rgba(200,180,100,0.5)";
+            ctx.fillRect(138, gfY + 28, 3, 3);
+        }
+
+        // Roof cornice (decorative top edge)
+        ctx.fillStyle = "rgba(255,255,255,0.1)";
+        ctx.fillRect(0, 0, 256, 6);
+        ctx.fillStyle = "rgba(0,0,0,0.2)";
+        ctx.fillRect(0, 6, 256, 2);
+
         const tex = new THREE.CanvasTexture(c);
         return tex;
     }
 
     /* ─────────── Three.js setup ─────────── */
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    renderer.shadowMap.autoUpdate = false; // manually triggered — avoids re-render every frame
+    renderer.shadowMap.autoUpdate = false;
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
+    renderer.toneMappingExposure = 1.15;
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0d0820);
-    scene.fog = new THREE.FogExp2(0x0d0820, 0.012);
+    scene.fog = new THREE.FogExp2(0x0d0820, 0.006);
 
-    const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.5, 180);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.5, 200);
     camera.position.set(0, CAM_Y, CAM_Z);
     camera.lookAt(0, CAM_LOOKAT_Y, -10);
 
-    /* ─── lighting (enhanced) ─── */
-    const ambLight = new THREE.AmbientLight(0x556688, 0.45);
+    /* ─── lighting (cinematic quality) ─── */
+    const ambLight = new THREE.AmbientLight(0x8899cc, 0.85);
     scene.add(ambLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffeedd, 1.1);
-    dirLight.position.set(8, 18, 10);
+    const dirLight = new THREE.DirectionalLight(0xfff0dd, 1.6);
+    dirLight.position.set(8, 20, 10);
     dirLight.castShadow = true;
-    dirLight.shadow.mapSize.set(1024, 1024);  // 1024 is plenty and 4× cheaper than 2048
+    dirLight.shadow.mapSize.set(2048, 2048);
     dirLight.shadow.camera.near = 1;
-    dirLight.shadow.camera.far = 80;
-    dirLight.shadow.camera.left = -20;
-    dirLight.shadow.camera.right = 20;
-    dirLight.shadow.camera.top = 20;
-    dirLight.shadow.camera.bottom = -20;
-    dirLight.shadow.bias = -0.001;
+    dirLight.shadow.camera.far = 100;
+    dirLight.shadow.camera.left = -28;
+    dirLight.shadow.camera.right = 28;
+    dirLight.shadow.camera.top = 28;
+    dirLight.shadow.camera.bottom = -28;
+    dirLight.shadow.bias = -0.0005;
     dirLight.shadow.normalBias = 0.02;
     scene.add(dirLight);
     scene.add(dirLight.target);
 
-    const hemiLight = new THREE.HemisphereLight(0x8866cc, 0x224433, 0.5);
+    const hemiLight = new THREE.HemisphereLight(0x9988dd, 0x336644, 0.8);
     scene.add(hemiLight);
 
-    // Rim light (back light for depth)
-    const rimLight = new THREE.DirectionalLight(0x6644bb, 0.35);
-    rimLight.position.set(-5, 8, -15);
+    // Rim light (backlight for depth separation)
+    const rimLight = new THREE.DirectionalLight(0x8866dd, 0.55);
+    rimLight.position.set(-6, 10, -18);
     scene.add(rimLight);
 
-    // Warm point light following player for atmosphere
-    const playerLight = new THREE.PointLight(0xffa040, 0.6, 18);
-    playerLight.position.set(0, 3, 0);
+    // Fill light from front-right for better obstacle visibility
+    const fillLight = new THREE.DirectionalLight(0xaabbff, 0.35);
+    fillLight.position.set(5, 6, -10);
+    scene.add(fillLight);
+
+    // Warm point light following player
+    const playerLight = new THREE.PointLight(0xffa040, 0.9, 25);
+    playerLight.position.set(0, 4, 0);
     scene.add(playerLight);
 
     /* ─────────── materials (cached — enhanced) ─────────── */
@@ -497,16 +573,16 @@
         track: new THREE.MeshStandardMaterial({ color: 0x3a3a4a, roughness: 0.92 }),
         sleeper: new THREE.MeshStandardMaterial({ color: 0x5a4a38, roughness: 0.85 }),
         sleeperDark: new THREE.MeshStandardMaterial({ color: 0x4a3a28, roughness: 0.9 }),
-        player: new THREE.MeshStandardMaterial({ color: 0x2288ee, roughness: 0.35, metalness: 0.1 }),
-        playerHoodie: new THREE.MeshStandardMaterial({ color: 0x2288ee, roughness: 0.45 }),
-        playerHead: new THREE.MeshStandardMaterial({ color: 0xffccaa, roughness: 0.55 }),
-        playerHair: new THREE.MeshStandardMaterial({ color: 0x332211, roughness: 0.75 }),
-        playerShoe: new THREE.MeshStandardMaterial({ color: 0xff2233, roughness: 0.45, metalness: 0.1 }),
-        playerSole: new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.6 }),
-        playerPant: new THREE.MeshStandardMaterial({ color: 0x1a1a44, roughness: 0.5 }),
-        playerBP: new THREE.MeshStandardMaterial({ color: 0xff6633, roughness: 0.45 }),
-        playerCap: new THREE.MeshStandardMaterial({ color: 0xff3344, roughness: 0.4 }),
-        playerCapBrim: new THREE.MeshStandardMaterial({ color: 0xdd2233, roughness: 0.5 }),
+        player: new THREE.MeshStandardMaterial({ color: 0x0088ff, roughness: 0.35, metalness: 0.1 }),
+        playerHoodie: new THREE.MeshStandardMaterial({ color: 0x0088ff, roughness: 0.45, metalness: 0.05, emissive: 0x001133, emissiveIntensity: 0.1 }),
+        playerHead: new THREE.MeshStandardMaterial({ color: 0xffd5b8, roughness: 0.55, metalness: 0.02 }),
+        playerHair: new THREE.MeshStandardMaterial({ color: 0x221100, roughness: 0.9 }),
+        playerShoe: new THREE.MeshStandardMaterial({ color: 0xff2244, roughness: 0.4, metalness: 0.15, emissive: 0x220000, emissiveIntensity: 0.1 }),
+        playerSole: new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.6 }),
+        playerPant: new THREE.MeshStandardMaterial({ color: 0x222266, roughness: 0.55 }),
+        playerBP: new THREE.MeshStandardMaterial({ color: 0xff6622, roughness: 0.45, metalness: 0.05, emissive: 0x220800, emissiveIntensity: 0.1 }),
+        playerCap: new THREE.MeshStandardMaterial({ color: 0xff2244, roughness: 0.4, metalness: 0.05, emissive: 0x220000, emissiveIntensity: 0.1 }),
+        playerCapBrim: new THREE.MeshStandardMaterial({ color: 0xdd1133, roughness: 0.45 }),
         train: new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.35, metalness: 0.4 }),
         trainAlt: new THREE.MeshStandardMaterial({ color: 0x2255bb, roughness: 0.35, metalness: 0.4 }),
         trainRoof: new THREE.MeshStandardMaterial({ color: 0x888899, roughness: 0.4, metalness: 0.5 }),
@@ -519,8 +595,8 @@
         barrier: new THREE.MeshStandardMaterial({ color: 0xffaa22, roughness: 0.4, metalness: 0.1 }),
         barrierStripe: new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.6 }),
         barrierWarn: new THREE.MeshStandardMaterial({ color: 0xff4422, emissive: 0xff2200, emissiveIntensity: 0.2, roughness: 0.4 }),
-        coin: new THREE.MeshStandardMaterial({ color: 0xffdd33, metalness: 0.85, roughness: 0.15, emissive: 0xffaa00, emissiveIntensity: 0.4 }),
-        coinEdge: new THREE.MeshStandardMaterial({ color: 0xddbb00, metalness: 0.9, roughness: 0.2 }),
+        coin: new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.92, roughness: 0.08, emissive: 0xffaa00, emissiveIntensity: 0.35 }),
+        coinEdge: new THREE.MeshStandardMaterial({ color: 0xeebb00, metalness: 0.95, roughness: 0.12 }),
         powerGreen: new THREE.MeshStandardMaterial({ color: 0x33ff88, emissive: 0x22cc66, emissiveIntensity: 0.5, roughness: 0.25 }),
         powerPurple: new THREE.MeshStandardMaterial({ color: 0xaa44ff, emissive: 0x8833cc, emissiveIntensity: 0.5, roughness: 0.25 }),
         building: new THREE.MeshStandardMaterial({ color: 0x334455, roughness: 0.88 }),
@@ -545,13 +621,16 @@
         wire: new THREE.MeshStandardMaterial({ color: 0x444455, metalness: 0.5, roughness: 0.4 }),
     };
 
-    /* ─────────── geometry (cached) ─────────── */
+    /* ─────────── geometry (cached — higher quality) ─────────── */
     const geo = {
         box: new THREE.BoxGeometry(1, 1, 1),
-        coin: new THREE.CylinderGeometry(0.38, 0.38, 0.1, 24),
-        sphere: new THREE.SphereGeometry(0.35, 16, 16),
-        powerup: new THREE.OctahedronGeometry(0.45, 1),
-        wheel: new THREE.CylinderGeometry(0.3, 0.3, 0.12, 12),
+        coin: new THREE.CylinderGeometry(0.48, 0.48, 0.1, 32),
+        coinInner: new THREE.CylinderGeometry(0.38, 0.38, 0.11, 32),
+        sphere: new THREE.SphereGeometry(0.4, 20, 20),
+        powerup: new THREE.OctahedronGeometry(0.55, 2),
+        wheel: new THREE.CylinderGeometry(0.3, 0.3, 0.12, 16),
+        capsule: new THREE.CylinderGeometry(0.18, 0.18, 0.5, 12),
+        headSphere: new THREE.SphereGeometry(0.38, 16, 14),
     };
 
     /* ─────────── helpers ─────────── */
@@ -561,31 +640,31 @@
     function lerp(a, b, t) { return a + (b - a) * t; }
     function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-    /* ─────────── particle system (dust/sparks) ─────────── */
+    /* ─────────── particle system (polished dust/sparks) ─────────── */
     const particles = [];
-    const particleGeo = new THREE.SphereGeometry(0.04, 4, 4);
-    const particleMat = new THREE.MeshBasicMaterial({ color: 0xccbb99, transparent: true, opacity: 0.6 });
-    const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffee88, transparent: true, opacity: 0.8 });
+    const particleGeo = new THREE.SphereGeometry(0.035, 6, 6);
+    const particleMat = new THREE.MeshBasicMaterial({ color: 0xccbb99, transparent: true, opacity: 0.5 });
+    const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffee88, transparent: true, opacity: 0.75 });
 
     function spawnDust(pos, count = 3) {
-        if (particles.length >= MAX_PARTICLES) return; // cap total particles
+        if (particles.length >= MAX_PARTICLES) return;
         const allowed = Math.min(count, MAX_PARTICLES - particles.length);
         for (let i = 0; i < allowed; i++) {
             const mesh = new THREE.Mesh(particleGeo, particleMat.clone());
             mesh.position.set(
-                pos.x + rnd(-0.3, 0.3),
-                pos.y + rnd(0, 0.2),
-                pos.z + rnd(0.3, 0.8)
+                pos.x + rnd(-0.25, 0.25),
+                pos.y + rnd(0, 0.15),
+                pos.z + rnd(0.2, 0.7)
             );
-            mesh.scale.setScalar(rnd(0.5, 1.5));
+            mesh.scale.setScalar(rnd(0.4, 1.2));
             scene.add(mesh);
             particles.push({
                 mesh,
-                vx: rnd(-0.02, 0.02),
-                vy: rnd(0.01, 0.04),
-                vz: rnd(0.02, 0.06),
-                life: rndInt(15, 30),
-                maxLife: 30,
+                vx: rnd(-0.015, 0.015),
+                vy: rnd(0.015, 0.035),
+                vz: rnd(0.02, 0.05),
+                life: rndInt(18, 35),
+                maxLife: 35,
             });
         }
     }
@@ -595,29 +674,32 @@
         const allowed = Math.min(count, MAX_PARTICLES - particles.length);
         for (let i = 0; i < allowed; i++) {
             const mesh = new THREE.Mesh(particleGeo, sparkMat.clone());
-            mesh.position.set(pos.x + rnd(-0.5, 0.5), pos.y + rnd(0.5, 1.5), pos.z + rnd(-0.3, 0.3));
-            mesh.scale.setScalar(rnd(0.3, 0.8));
+            mesh.position.set(pos.x + rnd(-0.4, 0.4), pos.y + rnd(0.3, 1.2), pos.z + rnd(-0.2, 0.2));
+            mesh.scale.setScalar(rnd(0.2, 0.7));
             scene.add(mesh);
             particles.push({
                 mesh,
-                vx: rnd(-0.05, 0.05),
-                vy: rnd(0.03, 0.08),
-                vz: rnd(-0.03, 0.03),
-                life: rndInt(10, 20),
-                maxLife: 20,
+                vx: rnd(-0.04, 0.04),
+                vy: rnd(0.04, 0.09),
+                vz: rnd(-0.025, 0.025),
+                life: rndInt(12, 24),
+                maxLife: 24,
             });
         }
     }
 
-    function updateParticles() {
+    function updateParticles(dtScale) {
+        const d = dtScale || 1;
         for (let i = particles.length - 1; i >= 0; i--) {
             const p = particles[i];
-            p.mesh.position.x += p.vx;
-            p.mesh.position.y += p.vy;
-            p.mesh.position.z += p.vz;
-            p.vy -= 0.001;
-            p.life--;
-            p.mesh.material.opacity = (p.life / p.maxLife) * 0.6;
+            p.mesh.position.x += p.vx * d;
+            p.mesh.position.y += p.vy * d;
+            p.mesh.position.z += p.vz * d;
+            p.vy -= 0.0008 * d;
+            p.life -= d;
+            const lifeRatio = Math.max(0, p.life / p.maxLife);
+            p.mesh.material.opacity = lifeRatio * lifeRatio * 0.6;
+            p.mesh.scale.setScalar(p.mesh.scale.x * Math.pow(0.97, d));
             if (p.life <= 0) {
                 scene.remove(p.mesh);
                 p.mesh.material.dispose();
@@ -701,8 +783,8 @@
                 group.add(railBase);
             }
 
-            // Sleepers (wooden ties — alternating shades)
-            for (let s = -CHUNK_LEN / 2; s < CHUNK_LEN / 2; s += 2.0) {
+            // Sleepers (wooden ties — alternating shades, coarser spacing for perf)
+            for (let s = -CHUNK_LEN / 2; s < CHUNK_LEN / 2; s += 3.5) {
                 const slMat = Math.random() < 0.3 ? mat.sleeperDark : mat.sleeper;
                 const sl = new THREE.Mesh(
                     new THREE.BoxGeometry(1.7, 0.07, 0.22),
@@ -839,21 +921,21 @@
 
     /* ─────────── buildings (enhanced scenery) ─────────── */
     const buildings = [];
-    const buildColors = ["#334455", "#443355", "#884433", "#555566", "#3a3a55", "#4a3344"];
+    const buildColors = ["#3a5070", "#554488", "#bb5533", "#667788", "#446688", "#885544", "#4a6655", "#886644", "#5a4a6a", "#708090"];
 
     function spawnBuilding(z) {
         const side = Math.random() < 0.5 ? -1 : 1;
-        const w = rnd(4, 9);
-        const h = rnd(8, 28);
+        const w = rnd(4, 10);
+        const h = rnd(10, 32);
         const d = rnd(5, 12);
-        const floors = Math.floor(h / 3);
-        const cols = Math.floor(w / 2);
+        const floors = Math.max(2, Math.floor(h / 3));
+        const cols = Math.max(2, Math.floor(w / 2));
         const bColor = pick(buildColors);
 
-        // Pick from pre-baked pool — avoids per-building canvas generation
+        // Pick from pre-baked pool
         const pool = getBuildTexPool();
         const buildTex = pool[Math.floor(Math.random() * pool.length)];
-        const buildMat = new THREE.MeshStandardMaterial({ map: buildTex, roughness: 0.88 });
+        const buildMat = new THREE.MeshStandardMaterial({ map: buildTex, roughness: 0.82, metalness: 0.05 });
 
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), buildMat);
         mesh.position.set(side * (GROUND_W / 2 - w / 2 + rnd(0, 4)), h / 2, z);
@@ -861,202 +943,447 @@
         mesh.receiveShadow = true;
         scene.add(mesh);
 
-        // Rooftop details
+        // Rooftop group
         const roofGroup = new THREE.Group();
 
-        // AC units / vents
-        if (Math.random() < 0.6) {
-            const ac = new THREE.Mesh(new THREE.BoxGeometry(rnd(0.5, 1.2), rnd(0.4, 0.7), rnd(0.5, 0.8)), mat.rooftop);
-            ac.position.set(rnd(-w / 3, w / 3), h / 2 + 0.3, rnd(-d / 3, d / 3));
+        // Flat roof slab (slightly wider for overhang)
+        const roofSlab = new THREE.Mesh(
+            new THREE.BoxGeometry(w + 0.3, 0.15, d + 0.3),
+            new THREE.MeshStandardMaterial({ color: 0x444450, roughness: 0.9 })
+        );
+        roofSlab.position.set(0, h / 2 + 0.07, 0);
+        roofGroup.add(roofSlab);
+
+        // Building ledge / cornice at top
+        const corniceMat = new THREE.MeshStandardMaterial({ color: 0x667777, roughness: 0.7 });
+        const cornice = new THREE.Mesh(new THREE.BoxGeometry(w + 0.5, 0.2, d + 0.5), corniceMat);
+        cornice.position.set(0, h / 2 - 0.1, 0);
+        roofGroup.add(cornice);
+
+        // AC units / vents (multiple)
+        const acCount = Math.random() < 0.6 ? rndInt(1, 3) : 0;
+        for (let i = 0; i < acCount; i++) {
+            const ac = new THREE.Mesh(
+                new THREE.BoxGeometry(rnd(0.5, 1.4), rnd(0.35, 0.65), rnd(0.5, 1.0)),
+                mat.rooftop
+            );
+            ac.position.set(rnd(-w / 3, w / 3), h / 2 + 0.35, rnd(-d / 3, d / 3));
             ac.castShadow = true;
             roofGroup.add(ac);
         }
 
         // Water tank
-        if (Math.random() < 0.3) {
-            const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.2, 8), mat.rooftop);
-            tank.position.set(rnd(-w / 4, w / 4), h / 2 + 0.8, rnd(-d / 4, d / 4));
+        if (Math.random() < 0.3 && h > 14) {
+            const tankGroup = new THREE.Group();
+            // Tank legs
+            for (const tx of [-0.3, 0.3]) {
+                for (const tz of [-0.3, 0.3]) {
+                    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.8, 6), mat.antenna);
+                    leg.position.set(tx, h / 2 + 0.6, tz);
+                    tankGroup.add(leg);
+                }
+            }
+            // Tank body (wooden barrel style)
+            const tankMat = new THREE.MeshStandardMaterial({ color: 0x6a5540, roughness: 0.85 });
+            const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.5, 1.2, 10), tankMat);
+            tank.position.set(rnd(-w / 4, w / 4), h / 2 + 1.2, rnd(-d / 4, d / 4));
             tank.castShadow = true;
-            roofGroup.add(tank);
+            tankGroup.add(tank);
+            // Tank lid
+            const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.05, 10), mat.rooftop);
+            lid.position.set(tank.position.x, h / 2 + 1.82, tank.position.z);
+            tankGroup.add(lid);
+            roofGroup.add(tankGroup);
         }
 
-        // Antenna
+        // Antenna / satellite dish
         if (Math.random() < 0.4) {
-            const ant = new THREE.Mesh(new THREE.BoxGeometry(0.04, rnd(1.5, 3.5), 0.04), mat.antenna);
-            ant.position.set(rnd(-w / 3, w / 3), h / 2 + 1.5, rnd(-d / 3, d / 3));
+            const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, rnd(2.0, 4.5), 4), mat.antenna);
+            ant.position.set(rnd(-w / 3, w / 3), h / 2 + 1.8, rnd(-d / 3, d / 3));
             roofGroup.add(ant);
+            // Blinking red light on top
+            const blink = new THREE.Mesh(
+                new THREE.SphereGeometry(0.05, 6, 6),
+                new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.8 })
+            );
+            blink.position.set(ant.position.x, h / 2 + 3.5, ant.position.z);
+            roofGroup.add(blink);
         }
 
-        // Neon sign on side
-        if (Math.random() < 0.35) {
+        // Chimney
+        if (Math.random() < 0.25) {
+            const chimney = new THREE.Mesh(
+                new THREE.BoxGeometry(0.5, 1.6, 0.5),
+                new THREE.MeshStandardMaterial({ color: 0x884433, roughness: 0.85 })
+            );
+            chimney.position.set(rnd(-w / 3, w / 3), h / 2 + 0.8, rnd(-d / 4, d / 4));
+            chimney.castShadow = true;
+            roofGroup.add(chimney);
+        }
+
+        // Neon sign on building face
+        if (Math.random() < 0.4) {
             const neonMat = pick([mat.neonRed, mat.neonBlue, mat.neonGreen]);
-            const neon = new THREE.Mesh(new THREE.BoxGeometry(rnd(1, 2.5), rnd(0.3, 0.6), 0.06), neonMat);
+            const neon = new THREE.Mesh(new THREE.BoxGeometry(rnd(1.2, 3.0), rnd(0.35, 0.7), 0.06), neonMat);
             const ny = rnd(h * 0.3, h * 0.7);
             neon.position.set(0, ny - h / 2, side > 0 ? -d / 2 - 0.04 : d / 2 + 0.04);
             if (side < 0) neon.rotation.y = Math.PI;
             mesh.add(neon);
 
-            // Neon glow light
-            const neonLight = new THREE.PointLight(neonMat.emissive.getHex(), 0.3, 6);
+            const neonLight = new THREE.PointLight(neonMat.emissive.getHex(), 0.35, 7);
             neonLight.position.copy(neon.position);
             mesh.add(neonLight);
+        }
+
+        // Fire escape (metal ladder on side — adds realism)
+        if (Math.random() < 0.3 && floors > 3) {
+            const feMat = new THREE.MeshStandardMaterial({ color: 0x444455, metalness: 0.5, roughness: 0.4 });
+            const feSide = side > 0 ? -d / 2 - 0.08 : d / 2 + 0.08;
+            for (let f = 0; f < Math.min(floors, 5); f++) {
+                const feY = 1.5 + f * 3;
+                // Platform
+                const fePlat = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.7), feMat);
+                fePlat.position.set(rnd(-w / 4, w / 4), feY - h / 2, feSide);
+                mesh.add(fePlat);
+                // Railing
+                const feRail = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.6, 0.03), feMat);
+                feRail.position.set(fePlat.position.x, feY + 0.3 - h / 2, feSide + (side > 0 ? -0.35 : 0.35));
+                mesh.add(feRail);
+            }
+        }
+
+        // Awning over ground floor (colorful like Subway Surfers)
+        if (Math.random() < 0.45) {
+            const awningColors = [0xcc3333, 0x3366cc, 0x33aa44, 0xcc8833, 0x9933aa];
+            const awMat = new THREE.MeshStandardMaterial({
+                color: pick(awningColors), roughness: 0.5, side: THREE.DoubleSide
+            });
+            const aw = new THREE.Mesh(new THREE.BoxGeometry(rnd(2, w * 0.8), 0.04, 1.2), awMat);
+            aw.position.set(0, 2.0 - h / 2, side > 0 ? -d / 2 - 0.6 : d / 2 + 0.6);
+            aw.rotation.z = side * 0.05;
+            mesh.add(aw);
         }
 
         mesh.add(roofGroup);
         buildings.push({ mesh, z });
     }
 
-    /* ─────────── player character (enhanced) ─────────── */
+    /* ─────────── player character (Subway Surfers style — cartoon proportioned) ─────────── */
     let player, playerParts;
 
     function createPlayer() {
         player = new THREE.Group();
 
-        // Body (torso / hoodie)
-        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.92, 0.48), mat.playerHoodie);
-        torso.position.y = 1.28;
+        // --- Torso (bright hoodie — wider, more visible 3D look) ---
+        const torsoGeo = new THREE.BoxGeometry(0.92, 0.88, 0.54, 3, 3, 3);
+        const tVerts = torsoGeo.attributes.position;
+        for (let i = 0; i < tVerts.count; i++) {
+            const x = tVerts.getX(i), y = tVerts.getY(i), z = tVerts.getZ(i);
+            const len = Math.sqrt(x * x + y * y + z * z);
+            const s = 1 + 0.06 / (len + 0.4);
+            tVerts.setXYZ(i, x * s, y * s, z * s);
+        }
+        torsoGeo.computeVertexNormals();
+        const torso = new THREE.Mesh(torsoGeo, mat.playerHoodie);
+        torso.position.y = 1.24;
         torso.castShadow = true;
         player.add(torso);
 
-        // Hoodie details — collar
-        const collar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.35), mat.playerHoodie);
-        collar.position.y = 1.77;
+        // Hoodie pocket (kangaroo style)
+        const pocketMat = new THREE.MeshStandardMaterial({ color: 0x0077dd, roughness: 0.5 });
+        const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.16, 0.02), pocketMat);
+        pocket.position.set(0, 1.02, -0.24);
+        player.add(pocket);
+
+        // Hoodie collar / neckline
+        const collarMat = new THREE.MeshStandardMaterial({ color: 0x005599, roughness: 0.5 });
+        const collar = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.3), collarMat);
+        collar.position.set(0, 1.62, 0);
         player.add(collar);
 
-        // Hood (behind head)
-        const hood = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.35, 0.3), mat.playerHoodie);
-        hood.position.set(0, 1.9, 0.18);
-        player.add(hood);
+        // Hoodie drawstrings
+        const stringMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.6 });
+        for (const sx of [-0.06, 0.06]) {
+            const str = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.2, 4), stringMat);
+            str.position.set(sx, 1.54, -0.22);
+            player.add(str);
+        }
 
-        // Head
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 12, 10), mat.playerHead);
-        head.position.y = 2.0;
+        // --- Head (BIG sphere — cartoon proportioned, larger) ---
+        const headGeo = new THREE.SphereGeometry(0.46, 20, 16);
+        const head = new THREE.Mesh(headGeo, mat.playerHead);
+        head.position.y = 2.12;
         head.castShadow = true;
         player.add(head);
 
-        // Cap
-        const cap = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.12, 0.48), mat.playerCap);
-        cap.position.set(0, 2.18, -0.02);
+        // Hair (dark brown, styled spiky top)
+        const hairMat = new THREE.MeshStandardMaterial({ color: 0x221100, roughness: 0.88 });
+        const hairTop = new THREE.Mesh(
+            new THREE.SphereGeometry(0.36, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.45),
+            hairMat
+        );
+        hairTop.position.set(0, 2.2, 0.02);
+        player.add(hairTop);
+
+        // Hair side tufts
+        for (const sx of [-0.2, 0.2]) {
+            const tuft = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), hairMat);
+            tuft.position.set(sx, 2.28, -0.06);
+            player.add(tuft);
+        }
+
+        // Cap (backwards — iconic Subway Surfers style!)
+        const capGeo = new THREE.SphereGeometry(0.36, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.35);
+        const cap = new THREE.Mesh(capGeo, mat.playerCap);
+        cap.position.set(0, 2.18, 0.02);
+        cap.rotation.x = -0.1;
         cap.castShadow = true;
         player.add(cap);
 
-        // Cap brim
-        const brim = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.04, 0.2), mat.playerCapBrim);
-        brim.position.set(0, 2.14, -0.28);
+        // Cap brim (pointing BACKWARDS — Subway Surfers signature)
+        const brimGeo = new THREE.CylinderGeometry(0.2, 0.26, 0.04, 16, 1, false, Math.PI * 0.4, Math.PI * 1.2);
+        const brim = new THREE.Mesh(brimGeo, mat.playerCapBrim);
+        brim.position.set(0, 2.1, 0.24);
+        brim.rotation.x = 0.15;
         player.add(brim);
 
-        // Eyes (two small spheres)
-        const eyeMat = new THREE.MeshBasicMaterial({ color: 0x222222 });
-        for (const ex of [-0.1, 0.1]) {
-            const eye = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), eyeMat);
-            eye.position.set(ex, 2.02, -0.27);
-            player.add(eye);
+        // Cap button on top
+        const capBtn = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), mat.playerCapBrim);
+        capBtn.position.set(0, 2.36, 0.02);
+        player.add(capBtn);
+
+        // --- Eyes (big, expressive, cartoon style) ---
+        const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25 });
+        const eyePupilMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.2, metalness: 0.1 });
+        const irisMat = new THREE.MeshStandardMaterial({ color: 0x3366aa, roughness: 0.3 });
+        for (const ex of [-0.13, 0.13]) {
+            const eyeW = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 10), eyeWhiteMat);
+            eyeW.position.set(ex, 2.06, -0.34);
+            eyeW.scale.set(1, 1.15, 0.65);
+            player.add(eyeW);
+            const iris = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), irisMat);
+            iris.position.set(ex, 2.06, -0.38);
+            player.add(iris);
+            const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), eyePupilMat);
+            pupil.position.set(ex, 2.06, -0.40);
+            player.add(pupil);
+            // Eye highlight (catches light)
+            const hl = new THREE.Mesh(new THREE.SphereGeometry(0.013, 6, 6), eyeWhiteMat);
+            hl.position.set(ex + 0.02, 2.08, -0.41);
+            player.add(hl);
         }
 
-        // Left arm
-        const lArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.78, 0.22), mat.playerHoodie);
-        lArm.position.set(-0.48, 1.25, 0);
+        // Eyebrows (expressive, slightly angled)
+        const browMat = new THREE.MeshStandardMaterial({ color: 0x221100, roughness: 0.85 });
+        for (const bx of [-0.13, 0.13]) {
+            const brow = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.028, 0.02), browMat);
+            brow.position.set(bx, 2.15, -0.34);
+            brow.rotation.z = bx > 0 ? -0.15 : 0.15;
+            player.add(brow);
+        }
+
+        // Nose (small bump)
+        const nose = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat.playerHead);
+        nose.position.set(0, 1.98, -0.40);
+        player.add(nose);
+
+        // Mouth (cheeky grin — curved)
+        const mouthMat = new THREE.MeshStandardMaterial({ color: 0xcc4444, roughness: 0.6 });
+        const mouth = new THREE.Mesh(
+            new THREE.TorusGeometry(0.065, 0.014, 6, 12, Math.PI),
+            mouthMat
+        );
+        mouth.position.set(0, 1.9, -0.37);
+        mouth.rotation.x = Math.PI;
+        mouth.rotation.z = Math.PI;
+        player.add(mouth);
+
+        // Ears (small bumps on sides)
+        for (const sx of [-1, 1]) {
+            const ear = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), mat.playerHead);
+            ear.position.set(sx * 0.36, 2.02, -0.05);
+            ear.scale.set(0.5, 0.8, 0.6);
+            player.add(ear);
+        }
+
+        // --- Arms (hoodie sleeves — thicker, more visible) ---
+        const armGeo = new THREE.CylinderGeometry(0.14, 0.13, 0.72, 10);
+        const lArm = new THREE.Mesh(armGeo, mat.playerHoodie);
+        lArm.position.set(-0.5, 1.2, 0);
         lArm.castShadow = true;
         player.add(lArm);
 
-        // Right arm
-        const rArm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.78, 0.22), mat.playerHoodie);
-        rArm.position.set(0.48, 1.25, 0);
+        const rArm = new THREE.Mesh(armGeo.clone(), mat.playerHoodie);
+        rArm.position.set(0.5, 1.2, 0);
         rArm.castShadow = true;
         player.add(rArm);
 
-        // Hands
-        const handMat = mat.playerHead;
-        const lHand = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), handMat);
-        lHand.position.set(-0.48, 0.82, 0);
+        // Hands (bigger, more visible skin-colored spheres)
+        const handGeo = new THREE.SphereGeometry(0.1, 10, 8);
+        const lHand = new THREE.Mesh(handGeo, mat.playerHead);
+        lHand.position.set(-0.5, 0.84, 0);
         player.add(lHand);
-        const rHand = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), handMat);
-        rHand.position.set(0.48, 0.82, 0);
+        const rHand = new THREE.Mesh(handGeo.clone(), mat.playerHead);
+        rHand.position.set(0.5, 0.84, 0);
         player.add(rHand);
 
-        // Left leg
-        const lLeg = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.72, 0.26), mat.playerPant);
-        lLeg.position.set(-0.18, 0.56, 0);
+        // --- Legs (dark jeans, thicker for 3D visibility) ---
+        const legGeo = new THREE.CylinderGeometry(0.16, 0.15, 0.68, 10);
+        const lLeg = new THREE.Mesh(legGeo, mat.playerPant);
+        lLeg.position.set(-0.18, 0.54, 0);
         lLeg.castShadow = true;
         player.add(lLeg);
 
-        // Right leg
-        const rLeg = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.72, 0.26), mat.playerPant);
-        rLeg.position.set(0.18, 0.56, 0);
+        const rLeg = new THREE.Mesh(legGeo.clone(), mat.playerPant);
+        rLeg.position.set(0.18, 0.54, 0);
         rLeg.castShadow = true;
         player.add(rLeg);
 
-        // Shoes
-        const lShoe = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.16, 0.38), mat.playerShoe);
-        lShoe.position.set(-0.18, 0.08, 0.04);
+        // --- Shoes (chunky athletic sneakers — Subway Surfers style, bigger) ---
+        const shoeGeo = new THREE.BoxGeometry(0.32, 0.2, 0.46, 2, 1, 2);
+        const shoeV = shoeGeo.attributes.position;
+        for (let i = 0; i < shoeV.count; i++) {
+            const y = shoeV.getY(i), z = shoeV.getZ(i);
+            if (z < -0.12) shoeV.setY(i, y + 0.04);
+            if (y > 0.05) shoeV.setX(i, shoeV.getX(i) * 0.9);
+        }
+        shoeGeo.computeVertexNormals();
+        const lShoe = new THREE.Mesh(shoeGeo, mat.playerShoe);
+        lShoe.position.set(-0.18, 0.08, -0.04);
         player.add(lShoe);
-        const rShoe = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.16, 0.38), mat.playerShoe);
-        rShoe.position.set(0.18, 0.08, 0.04);
+        const rShoe = new THREE.Mesh(shoeGeo.clone(), mat.playerShoe);
+        rShoe.position.set(0.18, 0.08, -0.04);
         player.add(rShoe);
 
-        // Shoe soles
-        const lSole = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.4), mat.playerSole);
-        lSole.position.set(-0.18, 0.02, 0.04);
+        // Shoe soles (thick white rubber)
+        const lSole = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 0.42), mat.playerSole);
+        lSole.position.set(-0.18, 0.015, -0.04);
         player.add(lSole);
-        const rSole = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.4), mat.playerSole);
-        rSole.position.set(0.18, 0.02, 0.04);
+        const rSole = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 0.42), mat.playerSole);
+        rSole.position.set(0.18, 0.015, -0.04);
         player.add(rSole);
 
-        // Backpack
-        const bp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.55, 0.25), mat.playerBP);
-        bp.position.set(0, 1.3, 0.35);
+        // Shoe swoosh accent (white stripe on each side)
+        const swooshMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+        for (const sx of [-0.18, 0.18]) {
+            const swoosh = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.06, 0.2), swooshMat);
+            swoosh.position.set(sx + (sx > 0 ? 0.13 : -0.13), 0.1, -0.04);
+            swoosh.rotation.z = sx > 0 ? 0.2 : -0.2;
+            player.add(swoosh);
+        }
+
+        // Shoe laces (thin white details)
+        for (const sx of [-0.18, 0.18]) {
+            for (let i = 0; i < 3; i++) {
+                const lace = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.012, 0.01), swooshMat);
+                lace.position.set(sx, 0.15, -0.14 + i * 0.08);
+                player.add(lace);
+            }
+        }
+
+        // --- Backpack (rounded, prominent, with details — bigger) ---
+        const bpGeo = new THREE.BoxGeometry(0.58, 0.62, 0.3, 3, 3, 3);
+        const bpV = bpGeo.attributes.position;
+        for (let i = 0; i < bpV.count; i++) {
+            const x = bpV.getX(i), y = bpV.getY(i), z = bpV.getZ(i);
+            const len = Math.sqrt(x * x + y * y + z * z);
+            const s = 1 + 0.05 / (len + 0.3);
+            bpV.setXYZ(i, x * s, y * s, z * s);
+        }
+        bpGeo.computeVertexNormals();
+        const bp = new THREE.Mesh(bpGeo, mat.playerBP);
+        bp.position.set(0, 1.28, 0.35);
         bp.castShadow = true;
         player.add(bp);
 
         // Backpack straps
-        for (const sx of [-0.18, 0.18]) {
-            const strap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 0.04), mat.playerBP);
-            strap.position.set(sx, 1.35, 0.18);
+        for (const sx of [-0.16, 0.16]) {
+            const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 6), mat.playerBP);
+            strap.position.set(sx, 1.3, 0.2);
             player.add(strap);
         }
 
-        playerParts = { torso, head, cap, hood, lArm, rArm, lHand, rHand, lLeg, rLeg, lShoe, rShoe, bp };
+        // Backpack zipper (horizontal)
+        const zipMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.8, roughness: 0.2 });
+        const zip = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.01), zipMat);
+        zip.position.set(0, 1.38, 0.48);
+        player.add(zip);
+
+        // Backpack front pocket
+        const bpPocketMat = new THREE.MeshStandardMaterial({ color: 0xff5511, roughness: 0.45 });
+        const bpPocket = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.04, 2, 2, 1), bpPocketMat);
+        bpPocket.position.set(0, 1.12, 0.48);
+        player.add(bpPocket);
+
+        // Backpack zip pull (small metallic tab)
+        const zipPull = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.01), zipMat);
+        zipPull.position.set(0.15, 1.38, 0.49);
+        player.add(zipPull);
+
+        playerParts = { torso, head, cap, lArm, rArm, lHand, rHand, lLeg, rLeg, lShoe, rShoe, bp };
         player.position.set(0, GROUND_Y, 0);
         scene.add(player);
     }
 
-    /* ─── animate player (run cycle — enhanced) ─── */
+    /* ─── animate player (smooth run cycle — professional quality) ─── */
     function animatePlayer(frame) {
         if (!playerParts) return;
-        const { lArm, rArm, lHand, rHand, lLeg, rLeg, lShoe, rShoe, torso, head, cap, hood, bp } = playerParts;
+        const { lArm, rArm, lHand, rHand, lLeg, rLeg, lShoe, rShoe, torso, head, cap, bp } = playerParts;
         const spd = state.speed / RUN_SPEED;
-        const t = frame * 0.2 * spd;
-        const swing = Math.sin(t) * 0.55;
+        const t = frame * 0.18 * spd;
+        const swing = Math.sin(t);
+        const swingAbs = Math.abs(swing);
+        const swingCos = Math.cos(t);
 
         if (state.rolling) {
-            player.scale.set(1, 0.45, 1);
+            const rollScale = lerp(player.scale.y, 0.42, 0.15);
+            player.scale.set(1, rollScale, 1);
             player.position.y = state.jumping ? player.position.y : GROUND_Y;
         } else {
-            player.scale.set(1, 1, 1);
-            // Arms pump
-            lArm.rotation.x = swing * 0.9;
-            rArm.rotation.x = -swing * 0.9;
-            lHand.rotation.x = swing * 0.5;
-            rHand.rotation.x = -swing * 0.5;
-            lHand.position.y = 0.82 + Math.sin(t) * 0.05;
-            rHand.position.y = 0.82 - Math.sin(t) * 0.05;
+            player.scale.y = lerp(player.scale.y, 1, 0.12);
+            player.scale.x = lerp(player.scale.x, 1, 0.12);
+            player.scale.z = lerp(player.scale.z, 1, 0.12);
+
+            // Arms pump forward/back (opposite to legs)
+            const armSwing = swing * 0.7;
+            lArm.rotation.x = armSwing;
+            rArm.rotation.x = -armSwing;
+            lArm.rotation.z = 0.08;
+            rArm.rotation.z = -0.08;
+            // Hands follow arms
+            lHand.position.y = 0.84 + Math.sin(t + 0.2) * 0.08;
+            rHand.position.y = 0.84 - Math.sin(t + 0.2) * 0.08;
+            lHand.position.z = Math.sin(t) * 0.14;
+            rHand.position.z = -Math.sin(t) * 0.14;
+
             // Legs stride
-            lLeg.rotation.x = -swing * 0.85;
-            rLeg.rotation.x = swing * 0.85;
-            lShoe.rotation.x = -swing * 0.35;
-            rShoe.rotation.x = swing * 0.35;
-            // Body bob & twist
-            torso.rotation.z = Math.sin(t) * 0.025;
-            torso.rotation.y = Math.sin(t) * 0.02;
-            torso.position.y = 1.28 + Math.abs(Math.sin(t)) * 0.06;
-            // Head slight bob
-            head.position.y = 2.0 + Math.abs(Math.sin(t)) * 0.04;
-            head.rotation.y = Math.sin(t * 0.35) * 0.04;
-            cap.position.y = 2.18 + Math.abs(Math.sin(t)) * 0.04;
-            hood.position.y = 1.9 + Math.abs(Math.sin(t)) * 0.04;
-            // Backpack sway
-            bp.rotation.z = Math.sin(t * 0.8) * 0.03;
-            bp.position.y = 1.3 + Math.abs(Math.sin(t)) * 0.03;
+            const legSwing = swing * 0.65;
+            lLeg.rotation.x = -legSwing;
+            rLeg.rotation.x = legSwing;
+            lShoe.rotation.x = -legSwing * 0.3 - swingAbs * 0.12;
+            rShoe.rotation.x = legSwing * 0.3 - swingAbs * 0.12;
+            lShoe.position.z = -0.04 - Math.sin(t) * 0.1;
+            rShoe.position.z = -0.04 + Math.sin(t) * 0.1;
+
+            // Body bob
+            const bobHeight = swingAbs * 0.06;
+            torso.position.y = 1.24 + bobHeight;
+            torso.rotation.y = swing * 0.02;
+            torso.rotation.z = swing * 0.015;
+            const leanFwd = clamp((state.speed - RUN_SPEED) / (MAX_SPEED - RUN_SPEED), 0, 1) * 0.06;
+            torso.rotation.x = leanFwd;
+
+            // Head bobs with body
+            head.position.y = 2.02 + bobHeight * 0.8;
+            head.rotation.y = Math.sin(t * 0.4) * 0.03;
+            head.rotation.z = swing * 0.01;
+            cap.position.y = 2.18 + bobHeight * 0.8;
+            cap.rotation.y = head.rotation.y;
+
+            // Backpack sways
+            bp.rotation.z = Math.sin(t * 0.9) * 0.03;
+            bp.rotation.x = -leanFwd * 0.3 + swingAbs * 0.025;
+            bp.position.y = 1.28 + bobHeight * 0.6;
         }
     }
 
@@ -1067,32 +1394,45 @@
         const trainLen = rnd(10, 18);
         const g = new THREE.Group();
 
-        // NYC-style subway lines: each with a distinctive accent colour
-        const lineAccents = [0xee352e, 0xff6319, 0xfccc0a, 0x00933c, 0x0039a6, 0xa626aa, 0x808183];
-        const lineColor = lineAccents[Math.floor(Math.random() * lineAccents.length)];
-        const lineMat = new THREE.MeshStandardMaterial({ color: lineColor, roughness: 0.3, metalness: 0.25 });
+        // Subway Surfers style — bright colorful trains
+        const trainBodyColors = [
+            { body: 0x2266cc, stripe: 0xffcc00, accent: 0x1144aa },  // Blue with gold
+            { body: 0xcc2222, stripe: 0xffffff, accent: 0x991111 },  // Red with white
+            { body: 0x22aa44, stripe: 0xffee00, accent: 0x118833 },  // Green with yellow
+            { body: 0x8833aa, stripe: 0xff66cc, accent: 0x662288 },  // Purple with pink
+            { body: 0xee7722, stripe: 0xffffff, accent: 0xcc5500 },  // Orange with white
+            { body: 0x2299bb, stripe: 0xffdd33, accent: 0x117799 },  // Teal with gold
+        ];
+        const scheme = trainBodyColors[Math.floor(Math.random() * trainBodyColors.length)];
 
-        // Stainless-steel body material
-        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xccccda, roughness: 0.28, metalness: 0.82 });
-
-        // Dark window glass material
-        const winMat = new THREE.MeshStandardMaterial({
-            color: 0x152030, emissive: 0x1a3355, emissiveIntensity: 0.35,
-            roughness: 0.05, metalness: 0.15, transparent: true, opacity: 0.9,
+        const bodyMat = new THREE.MeshStandardMaterial({
+            color: scheme.body, roughness: 0.3, metalness: 0.35,
+            emissive: scheme.accent, emissiveIntensity: 0.08
+        });
+        const stripeMat = new THREE.MeshStandardMaterial({
+            color: scheme.stripe, roughness: 0.25, metalness: 0.2
+        });
+        const accentMat = new THREE.MeshStandardMaterial({
+            color: scheme.accent, roughness: 0.35, metalness: 0.4
         });
 
-        /* ── Undercarriage / chassis ── */
-        const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.26, trainLen + 0.3), mat.trainBottom);
+        // Dark window glass
+        const winMat = new THREE.MeshStandardMaterial({
+            color: 0x152030, emissive: 0x1a3355, emissiveIntensity: 0.35,
+            roughness: 0.05, metalness: 0.15, transparent: true, opacity: 0.88,
+        });
+
+        /* ── Undercarriage ── */
+        const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.28, trainLen + 0.3), mat.trainBottom);
         chassis.position.y = 0.22;
         g.add(chassis);
 
-        /* ── Wheel bogies (front & rear) ── */
+        /* ── Wheel bogies ── */
         for (const bz of [-trainLen / 2 + 2.0, trainLen / 2 - 2.0]) {
-            const frame = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 2.3), mat.trainBottom);
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.14, 2.3), mat.trainBottom);
             frame.position.set(0, 0.14, bz);
             g.add(frame);
-            // 4 wheels per bogie
-            for (const wx of [-0.62, 0.62]) {
+            for (const wx of [-0.65, 0.65]) {
                 for (const wz of [-0.6, 0.6]) {
                     const wheel = new THREE.Mesh(
                         new THREE.CylinderGeometry(0.34, 0.34, 0.2, 18),
@@ -1101,7 +1441,6 @@
                     wheel.rotation.z = Math.PI / 2;
                     wheel.position.set(wx, 0.12, bz + wz);
                     g.add(wheel);
-                    // Steel flange (inner lip)
                     const flange = new THREE.Mesh(
                         new THREE.CylinderGeometry(0.38, 0.38, 0.07, 18),
                         mat.rail
@@ -1109,55 +1448,54 @@
                     flange.rotation.z = Math.PI / 2;
                     flange.position.set(wx, 0.12, bz + wz);
                     g.add(flange);
-                    // Axle
-                    const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.35, 8), mat.trainBottom);
-                    axle.rotation.z = Math.PI / 2;
-                    axle.position.set(0, 0.12, bz + wz);
-                    g.add(axle);
                 }
             }
         }
 
-        /* ── Main body — stainless steel ── */
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.88, 2.65, trainLen), bodyMat);
-        body.position.y = 1.68;
+        /* ── Main body — colorful! (taller for 3D presence) ── */
+        const body = new THREE.Mesh(new THREE.BoxGeometry(2.1, 3.0, trainLen), bodyMat);
+        body.position.y = 1.85;
         body.castShadow = true;
         body.receiveShadow = true;
         g.add(body);
 
-        /* ── Coloured line stripe (bold band near top) ── */
-        const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.52, trainLen + 0.04), lineMat);
-        stripe.position.y = 2.72;
+        /* ── Bold stripe band (signature look) ── */
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.12, 0.55, trainLen + 0.04), stripeMat);
+        stripe.position.y = 2.2;
         g.add(stripe);
 
-        /* ── Thin chrome trim at top/bottom of stripe ── */
-        for (const dy of [0, 0.52]) {
-            const trim = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.04, trainLen + 0.04),
-                new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.9, roughness: 0.12 }));
-            trim.position.y = 2.72 - 0.26 + dy;
+        // Second thinner accent stripe below windows
+        const stripe2 = new THREE.Mesh(new THREE.BoxGeometry(2.12, 0.12, trainLen + 0.04), stripeMat);
+        stripe2.position.y = 2.9;
+        g.add(stripe2);
+
+        /* ── Chrome trim lines ── */
+        const chromeMat = new THREE.MeshStandardMaterial({ color: 0xddddee, metalness: 0.9, roughness: 0.1 });
+        for (const dy of [1.85, 2.48, 2.95]) {
+            const trim = new THREE.Mesh(new THREE.BoxGeometry(2.13, 0.03, trainLen + 0.04), chromeMat);
+            trim.position.y = dy;
             g.add(trim);
         }
 
-        /* ── Roof ── */
-        const roof = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.16, trainLen + 0.12), mat.trainRoof);
-        roof.position.y = 3.05;
+        /* ── Roof (rounded feel) ── */
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.18, trainLen + 0.12), mat.trainRoof);
+        roof.position.y = 3.4;
         g.add(roof);
-        // Bevelled roof edges
         for (const rx of [-1, 1]) {
-            const bev = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, trainLen + 0.12), mat.trainRoof);
-            bev.position.set(rx * 0.89, 3.01, 0);
+            const bev = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, trainLen + 0.12), mat.trainRoof);
+            bev.position.set(rx * 0.98, 3.36, 0);
             bev.rotation.z = rx * 0.22;
             g.add(bev);
         }
-        // AC units on roof
+        // AC units
         for (const az of [-trainLen * 0.28, trainLen * 0.28]) {
-            const ac = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.16, 2.0), mat.trainRoof);
-            ac.position.set(0, 3.13, az);
+            const ac = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.18, 2.0), mat.trainRoof);
+            ac.position.set(0, 3.5, az);
             g.add(ac);
         }
-        // Pantograph base
+        // Pantograph
         const panBase = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.55), mat.wire);
-        panBase.position.set(0, 3.14, 0);
+        panBase.position.set(0, 3.5, 0);
         g.add(panBase);
 
         /* ── Windows & doors ── */
@@ -1167,116 +1505,357 @@
         for (let i = 0; i < winCount; i++) {
             const wz = winStartZ + i * winSpacing;
             const isDoor = (i === Math.floor(winCount / 3) || i === Math.floor(winCount * 2 / 3));
-            for (const sx of [-0.945, 0.945]) {
+            for (const sx of [-1.06, 1.06]) {
                 if (isDoor) {
                     // Door rubber seal
                     const sealMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.95 });
-                    const sealV = new THREE.Mesh(new THREE.BoxGeometry(0.015, 2.1, 0.05), sealMat);
-                    sealV.position.set(sx, 1.55, wz - 0.38);
+                    const sealV = new THREE.Mesh(new THREE.BoxGeometry(0.015, 2.3, 0.05), sealMat);
+                    sealV.position.set(sx, 1.65, wz - 0.38);
                     g.add(sealV);
-                    // Door upper window
-                    const dw = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.72), winMat);
-                    dw.position.set(sx * 1.001, 2.22, wz);
+                    // Door window (bigger)
+                    const dw = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.85), winMat);
+                    dw.position.set(sx * 1.001, 2.4, wz);
                     dw.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
                     g.add(dw);
-                    // Door lower panel
-                    const dp = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 1.26), bodyMat);
-                    dp.position.set(sx * 1.001, 1.4, wz);
+                    // Door panel
+                    const dp = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 1.4), accentMat);
+                    dp.position.set(sx * 1.001, 1.5, wz);
                     dp.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
                     g.add(dp);
                 } else {
-                    // Recessed window
-                    const win = new THREE.Mesh(new THREE.PlaneGeometry(1.08, 0.72), winMat);
-                    win.position.set(sx * 1.001, 2.08, wz);
+                    // Large window
+                    const win = new THREE.Mesh(new THREE.PlaneGeometry(1.14, 0.85), winMat);
+                    win.position.set(sx * 1.001, 2.6, wz);
                     win.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
                     g.add(win);
-                    // Window frame inset
+                    // Window frame
                     const wf = new THREE.Mesh(
-                        new THREE.BoxGeometry(0.018, 0.78, 1.14),
-                        new THREE.MeshStandardMaterial({ color: 0x888894, metalness: 0.7, roughness: 0.2 })
+                        new THREE.BoxGeometry(0.018, 0.92, 1.2),
+                        chromeMat
                     );
-                    wf.position.set(sx, 2.08, wz);
+                    wf.position.set(sx, 2.6, wz);
                     g.add(wf);
                 }
             }
         }
 
-        /* ── Yellow safety stripe at door sill ── */
+        /* ── Graffiti panels (colorful rectangles — Subway Surfers signature!) ── */
+        const graffitiColors = [0xff4488, 0x44ddff, 0xffee33, 0x66ff44, 0xff8833, 0xaa55ff, 0xff3333];
+        if (Math.random() < 0.7) {
+            const grafCount = rndInt(2, 4);
+            for (let gi = 0; gi < grafCount; gi++) {
+                const gColor = graffitiColors[Math.floor(Math.random() * graffitiColors.length)];
+                const gMat = new THREE.MeshStandardMaterial({
+                    color: gColor, roughness: 0.55, metalness: 0.1,
+                    emissive: gColor, emissiveIntensity: 0.08
+                });
+                const gw = rnd(0.8, 2.5), gh = rnd(0.4, 1.2);
+                const gPanel = new THREE.Mesh(new THREE.PlaneGeometry(gw, gh), gMat);
+                const gSide = Math.random() < 0.5 ? -1.06 : 1.06;
+                const gz = rnd(-trainLen / 2 + 2, trainLen / 2 - 2);
+                const gy = rnd(0.8, 1.8);
+                gPanel.position.set(gSide * 1.002, gy, gz);
+                gPanel.rotation.y = gSide > 0 ? -Math.PI / 2 : Math.PI / 2;
+                g.add(gPanel);
+            }
+        }
+
+        /* ── Safety stripe ── */
         const safetyMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.4, metalness: 0.1 });
-        for (const sx of [-0.945, 0.945]) {
-            const saf = new THREE.Mesh(new THREE.PlaneGeometry(trainLen - 0.9, 0.07), safetyMat);
+        for (const sx of [-1.06, 1.06]) {
+            const saf = new THREE.Mesh(new THREE.PlaneGeometry(trainLen - 0.9, 0.08), safetyMat);
             saf.position.set(sx * 1.001, 0.43, 0);
             saf.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
             g.add(saf);
         }
 
-        /* ── Front nose (coloured face) ── */
-        const frontBody = new THREE.Mesh(new THREE.BoxGeometry(1.88, 2.65, 0.38), lineMat);
-        frontBody.position.set(0, 1.68, -trainLen / 2 - 0.19);
+        /* ── Front nose / cab face (detailed realistic train front) ── */
+        const fz = -trainLen / 2; // front z reference
+
+        // Main front body
+        const frontBody = new THREE.Mesh(new THREE.BoxGeometry(2.1, 3.0, 0.4), bodyMat);
+        frontBody.position.set(0, 1.85, fz - 0.2);
         g.add(frontBody);
 
-        // Chrome bumper at bottom of nose
-        const bumper = new THREE.Mesh(
-            new THREE.BoxGeometry(1.88, 0.16, 0.06),
-            new THREE.MeshStandardMaterial({ color: 0xccccdd, metalness: 0.9, roughness: 0.1 })
-        );
-        bumper.position.set(0, 0.36, -trainLen / 2 - 0.36);
+        // Slight nose taper — angled bottom plate for aerodynamic look
+        const nosePlate = new THREE.Mesh(new THREE.BoxGeometry(2.06, 0.5, 0.35), accentMat);
+        nosePlate.position.set(0, 0.55, fz - 0.22);
+        nosePlate.rotation.x = 0.18;
+        g.add(nosePlate);
+
+        // Front stripe band
+        const frontStripe = new THREE.Mesh(new THREE.BoxGeometry(2.12, 0.55, 0.06), stripeMat);
+        frontStripe.position.set(0, 2.2, fz - 0.38);
+        g.add(frontStripe);
+
+        // Chrome bumper
+        const bumper = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.18, 0.06), chromeMat);
+        bumper.position.set(0, 0.36, fz - 0.38);
         g.add(bumper);
 
-        // Windshield
-        const wsFace = new THREE.Mesh(new THREE.PlaneGeometry(1.22, 0.92), winMat.clone());
-        wsFace.position.set(0, 2.24, -trainLen / 2 - 0.37);
-        g.add(wsFace);
+        // ── Windshield (large split-pane cab window) ──
+        // Main windshield glass (two panes with center divider)
+        for (const wx of [-0.35, 0.35]) {
+            const ws = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.92), winMat.clone());
+            ws.position.set(wx, 2.48, fz - 0.41);
+            g.add(ws);
+        }
+        // Center divider (thick pillar)
+        const wsDivider = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.0, 0.06), chromeMat);
+        wsDivider.position.set(0, 2.48, fz - 0.39);
+        g.add(wsDivider);
 
-        // Destination display board
-        const dstMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xeeeeff, emissiveIntensity: 0.3 });
+        // Window frame surround (chrome frame around entire windshield)
+        // Top frame
+        const wsFrameTop = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.06, 0.06), chromeMat);
+        wsFrameTop.position.set(0, 2.96, fz - 0.39);
+        g.add(wsFrameTop);
+        // Bottom frame
+        const wsFrameBot = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.06, 0.06), chromeMat);
+        wsFrameBot.position.set(0, 2.0, fz - 0.39);
+        g.add(wsFrameBot);
+        // Side frames
+        for (const sx of [-0.66, 0.66]) {
+            const wsFrameSide = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.02, 0.06), chromeMat);
+            wsFrameSide.position.set(sx, 2.48, fz - 0.39);
+            g.add(wsFrameSide);
+        }
+
+        // Windshield wipers (two thin arcs)
+        const wiperMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 });
+        for (const wx of [-0.3, 0.3]) {
+            const wiper = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.48, 0.015), wiperMat);
+            wiper.position.set(wx, 2.28, fz - 0.42);
+            wiper.rotation.z = wx > 0 ? 0.25 : -0.25;
+            g.add(wiper);
+        }
+
+        // ── Route / destination display board ──
+        const dstBorderMat = new THREE.MeshStandardMaterial({ color: 0x333344, roughness: 0.6, metalness: 0.3 });
+        const dstBorder = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.32, 0.03), dstBorderMat);
+        dstBorder.position.set(0, 2.88, fz - 0.395);
+        g.add(dstBorder);
+        const dstMat = new THREE.MeshStandardMaterial({ color: 0xffeedd, emissive: 0xffddaa, emissiveIntensity: 0.45 });
         const dst = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.22, 0.02), dstMat);
-        dst.position.set(0, 2.82, -trainLen / 2 - 0.37);
+        dst.position.set(0, 2.88, fz - 0.40);
         g.add(dst);
 
-        // Headlights (bright & round)
-        for (const hx of [-0.55, 0.55]) {
+        // ── Headlights (large circular with chrome bezels) ──
+        for (const hx of [-0.62, 0.62]) {
+            // Chrome bezel ring
+            const bezel = new THREE.Mesh(
+                new THREE.TorusGeometry(0.15, 0.025, 8, 20),
+                chromeMat
+            );
+            bezel.position.set(hx, 1.0, fz - 0.40);
+            g.add(bezel);
+            // Headlight lens
             const hlFace = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.1, 0.1, 0.05, 14),
+                new THREE.CylinderGeometry(0.13, 0.13, 0.05, 16),
                 mat.headlight
             );
             hlFace.rotation.x = Math.PI / 2;
-            hlFace.position.set(hx, 0.98, -trainLen / 2 - 0.38);
+            hlFace.position.set(hx, 1.0, fz - 0.40);
             g.add(hlFace);
-            // Actual point light
-            const hlLight = new THREE.PointLight(0xffffee, 1.2, 10);
-            hlLight.position.set(hx, 0.98, -trainLen / 2 - 0.55);
+            // Inner reflector (depth effect)
+            const reflector = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.09, 0.06, 0.08, 12),
+                chromeMat
+            );
+            reflector.rotation.x = Math.PI / 2;
+            reflector.position.set(hx, 1.0, fz - 0.36);
+            g.add(reflector);
+            // Actual light
+            const hlLight = new THREE.PointLight(0xffffee, 1.0, 8);
+            hlLight.position.set(hx, 1.0, fz - 0.55);
             g.add(hlLight);
         }
 
-        // Ditch lights (lower pair, white)
-        for (const hx of [-0.32, 0.32]) {
-            const dl = new THREE.Mesh(
-                new THREE.BoxGeometry(0.1, 0.06, 0.02),
-                new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.8 })
+        // ── Marker / signal lights (small colored circles at corners) ──
+        for (const hx of [-0.85, 0.85]) {
+            // Top marker (white)
+            const topMarker = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.04, 0.04, 0.03, 10),
+                mat.headlight
             );
-            dl.position.set(hx, 0.65, -trainLen / 2 - 0.38);
-            g.add(dl);
+            topMarker.rotation.x = Math.PI / 2;
+            topMarker.position.set(hx, 2.82, fz - 0.40);
+            g.add(topMarker);
+            // Bottom marker (amber)
+            const amberMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0xff8800, emissiveIntensity: 0.6 });
+            const botMarker = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.04, 0.04, 0.03, 10),
+                amberMat
+            );
+            botMarker.rotation.x = Math.PI / 2;
+            botMarker.position.set(hx, 0.58, fz - 0.40);
+            g.add(botMarker);
         }
 
-        /* ── Rear face + tail lights ── */
-        const rearBody = new THREE.Mesh(new THREE.BoxGeometry(1.88, 2.65, 0.28), bodyMat);
-        rearBody.position.set(0, 1.68, trainLen / 2 + 0.14);
+        // ── Air intake grilles (horizontal slats below windshield) ──
+        const grilleMat = new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.6, metalness: 0.4 });
+        for (let gy = 1.32; gy < 1.82; gy += 0.08) {
+            const slat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.03, 0.03), grilleMat);
+            slat.position.set(0, gy, fz - 0.41);
+            g.add(slat);
+        }
+        // Grille border frame (chrome trim pieces)
+        for (const gy of [1.28, 1.82]) {
+            const gTrim = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.025, 0.04), chromeMat);
+            gTrim.position.set(0, gy, fz - 0.40);
+            g.add(gTrim);
+        }
+        for (const gx of [-0.38, 0.38]) {
+            const gTrimV = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.56, 0.04), chromeMat);
+            gTrimV.position.set(gx, 1.55, fz - 0.40);
+            g.add(gTrimV);
+        }
+
+        // ── Ditch / fog lights (small rectangles lower on face) ──
+        const ditchLightMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.7 });
+        for (const hx of [-0.34, 0.34]) {
+            const dl = new THREE.Mesh(
+                new THREE.BoxGeometry(0.14, 0.08, 0.02),
+                ditchLightMat
+            );
+            dl.position.set(hx, 0.65, fz - 0.41);
+            g.add(dl);
+            // Chrome surround for ditch light
+            const dlBezel = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.13, 0.015), chromeMat);
+            dlBezel.position.set(hx, 0.65, fz - 0.405);
+            g.add(dlBezel);
+        }
+
+        // ── Front coupler / coupling mechanism ──
+        const coupFront = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.18, 0.3), mat.trainBottom);
+        coupFront.position.set(0, 0.28, fz - 0.35);
+        g.add(coupFront);
+        const coupKnuckle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, 0.16, 10),
+            mat.trainWheel
+        );
+        coupKnuckle.rotation.x = Math.PI / 2;
+        coupKnuckle.position.set(0, 0.28, fz - 0.52);
+        g.add(coupKnuckle);
+
+        // ── Pilot / cowcatcher (angled deflector at bottom) ──
+        const pilotMat = new THREE.MeshStandardMaterial({ color: 0x444455, roughness: 0.5, metalness: 0.4 });
+        const pilot = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.12, 0.25), pilotMat);
+        pilot.position.set(0, 0.20, fz - 0.42);
+        pilot.rotation.x = 0.15;
+        g.add(pilot);
+
+        // ── Number / logo plate on front face ──
+        const plateMat = new THREE.MeshStandardMaterial({ color: 0xddddcc, roughness: 0.4, metalness: 0.5 });
+        const plate = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.18, 0.02), plateMat);
+        plate.position.set(0, 0.82, fz - 0.41);
+        g.add(plate);
+
+        /* ── Rear face — full 3D detailed (what the player sees approaching) ── */
+        const rz = trainLen / 2; // rear z reference
+
+        // Main rear body panel
+        const rearBody = new THREE.Mesh(new THREE.BoxGeometry(2.1, 3.0, 0.35), accentMat);
+        rearBody.position.set(0, 1.85, rz + 0.17);
+        rearBody.castShadow = true;
         g.add(rearBody);
-        for (const hx of [-0.55, 0.55]) {
+
+        // Rear stripe band (matches the side)
+        const rearStripe = new THREE.Mesh(new THREE.BoxGeometry(2.12, 0.55, 0.06), stripeMat);
+        rearStripe.position.set(0, 2.2, rz + 0.33);
+        g.add(rearStripe);
+
+        // Rear window (smaller than windshield)
+        const rearWin = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.7), winMat.clone());
+        rearWin.position.set(0, 2.45, rz + 0.36);
+        rearWin.rotation.y = Math.PI;
+        g.add(rearWin);
+
+        // Rear window chrome frame
+        const rwfTop = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.04, 0.04), chromeMat);
+        rwfTop.position.set(0, 2.82, rz + 0.35);
+        g.add(rwfTop);
+        const rwfBot = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.04, 0.04), chromeMat);
+        rwfBot.position.set(0, 2.08, rz + 0.35);
+        g.add(rwfBot);
+        for (const sx of [-0.53, 0.53]) {
+            const rwfSide = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.78, 0.04), chromeMat);
+            rwfSide.position.set(sx, 2.45, rz + 0.35);
+            g.add(rwfSide);
+        }
+
+        // Tail lights (large red circles with chrome bezels)
+        const tailLightMat = new THREE.MeshStandardMaterial({
+            color: 0xff0011, emissive: 0xff0011, emissiveIntensity: 1.0
+        });
+        for (const hx of [-0.65, 0.65]) {
+            // Chrome bezel
+            const tBezel = new THREE.Mesh(
+                new THREE.TorusGeometry(0.13, 0.02, 8, 16),
+                chromeMat
+            );
+            tBezel.position.set(hx, 1.0, rz + 0.35);
+            g.add(tBezel);
+            // Red tail light lens
             const tail = new THREE.Mesh(
-                new THREE.CylinderGeometry(0.09, 0.09, 0.04, 12),
-                new THREE.MeshStandardMaterial({ color: 0xff0011, emissive: 0xff0011, emissiveIntensity: 1.0 })
+                new THREE.CylinderGeometry(0.11, 0.11, 0.05, 14),
+                tailLightMat
             );
             tail.rotation.x = Math.PI / 2;
-            tail.position.set(hx, 0.98, trainLen / 2 + 0.25);
+            tail.position.set(hx, 1.0, rz + 0.35);
             g.add(tail);
         }
 
+        // Upper tail / brake lights (thin rectangles)
+        for (const hx of [-0.4, 0.4]) {
+            const upperTail = new THREE.Mesh(
+                new THREE.BoxGeometry(0.35, 0.08, 0.03),
+                tailLightMat
+            );
+            upperTail.position.set(hx, 2.88, rz + 0.36);
+            g.add(upperTail);
+        }
+
+        // Rear chrome bumper
+        const rearBumper = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.16, 0.06), chromeMat);
+        rearBumper.position.set(0, 0.38, rz + 0.35);
+        g.add(rearBumper);
+
+        // Rear grille / ventilation slats
+        const rGrilleMat = new THREE.MeshStandardMaterial({ color: 0x222233, roughness: 0.6, metalness: 0.4 });
+        for (let gy = 1.4; gy < 1.8; gy += 0.08) {
+            const slat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.025, 0.025), rGrilleMat);
+            slat.position.set(0, gy, rz + 0.36);
+            g.add(slat);
+        }
+
+        // Rear number plate
+        const rPlate = new THREE.Mesh(
+            new THREE.BoxGeometry(0.4, 0.18, 0.02),
+            new THREE.MeshStandardMaterial({ color: 0xddddcc, roughness: 0.4, metalness: 0.4 })
+        );
+        rPlate.position.set(0, 0.62, rz + 0.36);
+        g.add(rPlate);
+
+        // Rear safety stripe
+        const rSafety = new THREE.Mesh(
+            new THREE.BoxGeometry(1.6, 0.06, 0.02),
+            new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.4 })
+        );
+        rSafety.position.set(0, 0.48, rz + 0.36);
+        g.add(rSafety);
+
         /* ── Coupling ── */
         const coup = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.2, 0.45), mat.trainBottom);
-        coup.position.set(0, 0.46, trainLen / 2 + 0.38);
+        coup.position.set(0, 0.46, rz + 0.45);
         g.add(coup);
+        const coupKnuckleR = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, 0.16, 10),
+            mat.trainWheel
+        );
+        coupKnuckleR.rotation.x = Math.PI / 2;
+        coupKnuckleR.position.set(0, 0.46, rz + 0.7);
+        g.add(coupKnuckleR);
 
         g.position.set(LANES[lane], GROUND_Y, z);
         scene.add(g);
@@ -1286,8 +1865,8 @@
             type: "train",
             lane,
             z,
-            halfW: 0.95,
-            halfH: 1.55,
+            halfW: 1.05,
+            halfH: 1.7,
             halfD: trainLen / 2 + 0.2,
         });
     }
@@ -1295,37 +1874,75 @@
     function spawnBarrier(lane, z) {
         const g = new THREE.Group();
 
-        // Posts (cylindrical)
-        for (const px of [-0.7, 0.7]) {
-            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.6, 8), mat.barrier);
-            post.position.set(px, 0.8, 0);
+        // --- BIG, VISIBLE barrier gate (like Subway Surfers) ---
+        const barrierW = 2.0; // full lane width
+        const barrierH = 2.4; // tall enough to clearly see
+
+        // Thick support posts (bright orange tubes)
+        for (const px of [-barrierW / 2, barrierW / 2]) {
+            const post = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.1, 0.12, barrierH, 12),
+                mat.barrier
+            );
+            post.position.set(px, barrierH / 2, 0);
             post.castShadow = true;
             g.add(post);
-            // Base
-            const base = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 8), mat.barrierStripe);
-            base.position.set(px, 0.04, 0);
+            // Post cap (rounded top)
+            const cap = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 8), mat.barrierWarn);
+            cap.position.set(px, barrierH, 0);
+            g.add(cap);
+            // Heavy base plate
+            const base = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.2, 0.24, 0.1, 12),
+                mat.barrierStripe
+            );
+            base.position.set(px, 0.05, 0);
             g.add(base);
         }
 
-        // Horizontal bars (alternating warning stripes)
-        for (let i = 0; i < 3; i++) {
+        // Thick horizontal bars (alternating bold yellow/black)
+        const barThick = new THREE.CylinderGeometry(0.07, 0.07, barrierW, 10);
+        for (let i = 0; i < 5; i++) {
             const bar = new THREE.Mesh(
-                new THREE.BoxGeometry(1.5, 0.1, 0.08),
+                barThick,
                 i % 2 === 0 ? mat.barrier : mat.barrierStripe
             );
-            bar.position.set(0, 0.4 + i * 0.4, 0);
+            bar.rotation.z = Math.PI / 2;
+            bar.position.set(0, 0.35 + i * 0.45, 0);
             bar.castShadow = true;
             g.add(bar);
         }
 
-        // Warning diamond
-        const diamond = new THREE.Mesh(
-            new THREE.BoxGeometry(0.25, 0.25, 0.04),
-            mat.barrierWarn
+        // Big bold reflective warning panel on front
+        const warnPanel = new THREE.Mesh(
+            new THREE.BoxGeometry(barrierW - 0.2, 0.5, 0.06),
+            new THREE.MeshStandardMaterial({
+                color: 0xff4400, emissive: 0xff2200, emissiveIntensity: 0.5,
+                roughness: 0.2, metalness: 0.2
+            })
         );
-        diamond.rotation.z = Math.PI / 4;
-        diamond.position.set(0, 1.35, -0.06);
-        g.add(diamond);
+        warnPanel.position.set(0, 1.5, -0.08);
+        g.add(warnPanel);
+
+        // Diagonal hazard stripes on panel
+        const hazardMat = new THREE.MeshStandardMaterial({
+            color: 0xffcc00, emissive: 0xffaa00, emissiveIntensity: 0.2,
+            roughness: 0.35
+        });
+        for (let i = 0; i < 6; i++) {
+            const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.46, 0.02), hazardMat);
+            stripe.position.set(-0.6 + i * 0.24, 1.5, -0.12);
+            stripe.rotation.z = 0.35;
+            g.add(stripe);
+        }
+
+        // Glowing warning light on top center
+        const warnLight = new THREE.Mesh(
+            new THREE.SphereGeometry(0.1, 10, 8),
+            new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff0000, emissiveIntensity: 1.2 })
+        );
+        warnLight.position.set(0, barrierH + 0.1, 0);
+        g.add(warnLight);
 
         g.position.set(LANES[lane], GROUND_Y, z);
         scene.add(g);
@@ -1335,9 +1952,9 @@
             type: "barrier",
             lane,
             z,
-            halfW: 0.8,
-            halfH: 0.8,
-            halfD: 0.2,
+            halfW: 1.0,
+            halfH: 1.2,
+            halfD: 0.25,
             canRollUnder: false,
             canJumpOver: true,
         });
@@ -1346,17 +1963,54 @@
     function spawnLowBarrier(lane, z) {
         const g = new THREE.Group();
 
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.35, 0.3), mat.barrierStripe);
-        bar.position.y = 0.18;
+        // --- Chunky concrete road barrier (clearly visible) ---
+        const barW = 2.2, barH = 0.75, barD = 0.6;
+
+        // Main concrete block (bigger, more solid)
+        const barGeo = new THREE.BoxGeometry(barW, barH, barD, 2, 2, 2);
+        const barV = barGeo.attributes.position;
+        // Slight bevel on top edges
+        for (let i = 0; i < barV.count; i++) {
+            const y = barV.getY(i);
+            const x = barV.getX(i);
+            if (y > barH * 0.35) {
+                barV.setX(i, x * 0.92);
+            }
+        }
+        barGeo.computeVertexNormals();
+        const concreteBarMat = new THREE.MeshStandardMaterial({
+            color: 0x888888, roughness: 0.7, metalness: 0.05
+        });
+        const bar = new THREE.Mesh(barGeo, concreteBarMat);
+        bar.position.y = barH / 2;
         bar.castShadow = true;
+        bar.receiveShadow = true;
         g.add(bar);
 
-        // Warning stripes
-        for (let i = 0; i < 5; i++) {
-            const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.36, 0.02), i % 2 === 0 ? mat.barrier : mat.barrierStripe);
-            stripe.position.set(-0.6 + i * 0.3, 0.18, -0.16);
-            g.add(stripe);
+        // Bold yellow/black chevron stripes on front face
+        const chevCount = 8;
+        for (let i = 0; i < chevCount; i++) {
+            const isYellow = i % 2 === 0;
+            const chevMat = new THREE.MeshStandardMaterial({
+                color: isYellow ? 0xffcc00 : 0x222222,
+                emissive: isYellow ? 0xff9900 : 0x000000,
+                emissiveIntensity: isYellow ? 0.2 : 0,
+                roughness: 0.4
+            });
+            const chev = new THREE.Mesh(new THREE.BoxGeometry(0.18, barH - 0.1, 0.02), chevMat);
+            chev.position.set(-barW / 2 + 0.2 + i * (barW - 0.4) / (chevCount - 1), barH / 2, -barD / 2 - 0.01);
+            chev.rotation.z = isYellow ? 0.3 : -0.3;
+            g.add(chev);
         }
+
+        // Reflective orange strip on top
+        const topStripMat = new THREE.MeshStandardMaterial({
+            color: 0xff6600, emissive: 0xff4400, emissiveIntensity: 0.35,
+            roughness: 0.25
+        });
+        const topStrip = new THREE.Mesh(new THREE.BoxGeometry(barW + 0.05, 0.06, barD + 0.05), topStripMat);
+        topStrip.position.y = barH + 0.03;
+        g.add(topStrip);
 
         g.position.set(LANES[lane], GROUND_Y, z);
         scene.add(g);
@@ -1366,9 +2020,9 @@
             type: "lowBarrier",
             lane,
             z,
-            halfW: 0.9,
-            halfH: 0.2,
-            halfD: 0.15,
+            halfW: 1.1,
+            halfH: 0.4,
+            halfD: 0.3,
             canRollUnder: false,
             canJumpOver: true,
         });
@@ -1377,21 +2031,79 @@
     function spawnUpperBarrier(lane, z) {
         const g = new THREE.Group();
 
-        for (const px of [-0.8, 0.8]) {
-            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.8, 8), mat.barrier);
-            post.position.set(px, 1.4, 0);
+        const ubW = 2.2; // wider to match lane
+
+        // Heavy steel support poles
+        for (const px of [-ubW / 2, ubW / 2]) {
+            const post = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.08, 0.1, 3.2, 12),
+                mat.barrier
+            );
+            post.position.set(px, 1.6, 0);
+            post.castShadow = true;
             g.add(post);
+            // Cross brace
+            const brace = new THREE.Mesh(
+                new THREE.BoxGeometry(0.04, 0.04, 0.3),
+                mat.barrier
+            );
+            brace.position.set(px * 0.7, 1.0, 0);
+            brace.rotation.z = px > 0 ? -0.4 : 0.4;
+            g.add(brace);
         }
 
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.32, 0.18), mat.barrier);
-        bar.position.y = 1.5;
-        bar.castShadow = true;
-        g.add(bar);
+        // Thick overhead beam (the main obstacle)
+        const beam = new THREE.Mesh(
+            new THREE.BoxGeometry(ubW, 0.35, 0.5),
+            mat.barrier
+        );
+        beam.position.y = 1.6;
+        beam.castShadow = true;
+        g.add(beam);
 
-        // Warning tape effect
-        const tape = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.06, 0.02), mat.barrierWarn);
-        tape.position.set(0, 1.68, -0.1);
-        g.add(tape);
+        // Bold red/white warning stripes on beam face
+        const redMat = new THREE.MeshStandardMaterial({
+            color: 0xff2222, emissive: 0xff1100, emissiveIntensity: 0.4,
+            roughness: 0.3
+        });
+        const whiteMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff, roughness: 0.3
+        });
+        for (let i = 0; i < 8; i++) {
+            const stripeM = i % 2 === 0 ? redMat : whiteMat;
+            const stripe = new THREE.Mesh(
+                new THREE.BoxGeometry(ubW / 8, 0.33, 0.02),
+                stripeM
+            );
+            stripe.position.set(-ubW / 2 + ubW / 16 + i * (ubW / 8), 1.6, -0.26);
+            g.add(stripe);
+        }
+
+        // Big danger sign hanging below
+        const signMat = new THREE.MeshStandardMaterial({
+            color: 0xffcc00, emissive: 0xffaa00, emissiveIntensity: 0.15,
+            roughness: 0.35
+        });
+        const sign = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.04), signMat);
+        sign.position.set(0, 1.2, -0.2);
+        g.add(sign);
+        // ⚠ Triangle
+        const tri = new THREE.Mesh(
+            new THREE.ConeGeometry(0.13, 0.22, 3),
+            new THREE.MeshStandardMaterial({ color: 0xff3300, emissive: 0xff2200, emissiveIntensity: 0.3, roughness: 0.4 })
+        );
+        tri.position.set(0, 1.22, -0.22);
+        g.add(tri);
+
+        // Flashing warning lights on both ends
+        for (const px of [-ubW / 2 + 0.15, ubW / 2 - 0.15]) {
+            const warnLt = new THREE.Mesh(
+                new THREE.SphereGeometry(0.08, 8, 8),
+                new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1.0 })
+            );
+            warnLt.position.set(px, 1.85, -0.2);
+            g.add(warnLt);
+        }
 
         g.position.set(LANES[lane], GROUND_Y, z);
         scene.add(g);
@@ -1401,53 +2113,76 @@
             type: "upperBarrier",
             lane,
             z,
-            halfW: 0.9,
-            halfH: 0.18,
-            halfD: 0.1,
-            yCenter: 1.5,
+            halfW: 1.1,
+            halfH: 0.25,
+            halfD: 0.25,
+            yCenter: 1.6,
             canRollUnder: true,
             canJumpOver: false,
         });
     }
 
-    /* ─────────── coins (enhanced) ─────────── */
+    /* ─────────── coins (professional gold coins) ─────────── */
     const coins = [];
+
+    // Pre-build a reusable coin prototype for instancing
+    const coinStarMat = new THREE.MeshStandardMaterial({
+        color: 0xffe066, emissive: 0xffcc00, emissiveIntensity: 0.4,
+        metalness: 0.9, roughness: 0.1
+    });
+
+    function createCoinMesh() {
+        const coinG = new THREE.Group();
+
+        // Main coin disc (slightly convex via scale)
+        const face = new THREE.Mesh(geo.coin, mat.coin);
+        face.rotation.x = Math.PI / 2;
+        face.scale.set(1, 1, 1.1);
+        coinG.add(face);
+
+        // Raised inner circle (like a real coin)
+        const inner = new THREE.Mesh(geo.coinInner, mat.coinEdge);
+        inner.rotation.x = Math.PI / 2;
+        inner.position.y = 0.001;
+        inner.scale.set(1, 1.2, 1);
+        coinG.add(inner);
+
+        // Center dollar sign / star emblem
+        const star = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.09, 0),
+            coinStarMat
+        );
+        star.position.y = 0.0;
+        star.rotation.y = Math.PI / 4;
+        coinG.add(star);
+
+        // Rim highlight (thin torus)
+        const rim = new THREE.Mesh(
+            new THREE.TorusGeometry(0.47, 0.03, 8, 32),
+            mat.coinEdge
+        );
+        coinG.add(rim);
+
+        // Soft glow sprite (smaller, more subtle)
+        const glowMat = new THREE.SpriteMaterial({
+            color: 0xffdd44,
+            transparent: true,
+            opacity: 0.18,
+            depthWrite: false,
+        });
+        const glow = new THREE.Sprite(glowMat);
+        glow.scale.set(0.9, 0.9, 1);
+        coinG.add(glow);
+
+        return coinG;
+    }
 
     function spawnCoinRow(lane, z, count = 5) {
         for (let i = 0; i < count; i++) {
-            const coinG = new THREE.Group();
-            // Main coin face
-            const face = new THREE.Mesh(geo.coin, mat.coin);
-            face.rotation.x = Math.PI / 2;
-            coinG.add(face);
-            // Edge ring
-            const edge = new THREE.Mesh(
-                new THREE.TorusGeometry(0.38, 0.04, 8, 24),
-                mat.coinEdge
-            );
-            coinG.add(edge);
-            // Inner star
-            const star = new THREE.Mesh(
-                new THREE.OctahedronGeometry(0.12, 0),
-                new THREE.MeshStandardMaterial({ color: 0xffee00, emissive: 0xffcc00, emissiveIntensity: 0.5 })
-            );
-            star.position.y = 0.0;
-            coinG.add(star);
-
-            // Glow sprite
-            const glowMat = new THREE.SpriteMaterial({
-                color: 0xffdd44,
-                transparent: true,
-                opacity: 0.25,
-                depthWrite: false,
-            });
-            const glow = new THREE.Sprite(glowMat);
-            glow.scale.set(1.2, 1.2, 1);
-            coinG.add(glow);
-
+            const coinG = createCoinMesh();
             coinG.position.set(LANES[lane], 1.0, z - i * 1.8);
             scene.add(coinG);
-            coins.push({ mesh: coinG, lane, z: z - i * 1.8, collected: false });
+            coins.push({ mesh: coinG, lane, z: z - i * 1.8, collected: false, baseY: 1.0 });
         }
     }
 
@@ -1455,25 +2190,14 @@
         for (let i = 0; i < 6; i++) {
             const t = i / 5;
             const yOff = Math.sin(t * Math.PI) * 2.5;
-            const coinG = new THREE.Group();
-            const face = new THREE.Mesh(geo.coin, mat.coin);
-            face.rotation.x = Math.PI / 2;
-            coinG.add(face);
-            const edge = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.04, 8, 24), mat.coinEdge);
-            coinG.add(edge);
-
-            const glowMat = new THREE.SpriteMaterial({ color: 0xffdd44, transparent: true, opacity: 0.2, depthWrite: false });
-            const glow = new THREE.Sprite(glowMat);
-            glow.scale.set(1.0, 1.0, 1);
-            coinG.add(glow);
-
+            const coinG = createCoinMesh();
             coinG.position.set(LANES[lane], 1.0 + yOff, z - i * 1.8);
             scene.add(coinG);
-            coins.push({ mesh: coinG, lane, z: z - i * 1.8, collected: false });
+            coins.push({ mesh: coinG, lane, z: z - i * 1.8, collected: false, baseY: 1.0 + yOff });
         }
     }
 
-    /* ─────────── powerups (enhanced) ─────────── */
+    /* ─────────── powerups (polished floating gems) ─────────── */
     const powerups = [];
 
     function spawnPowerup(lane, z) {
@@ -1481,18 +2205,29 @@
         const m = type === "magnet" ? mat.powerGreen : mat.powerPurple;
         const g = new THREE.Group();
 
+        // Core gem (higher-poly octahedron)
         const core = new THREE.Mesh(geo.powerup, m);
         core.castShadow = true;
         g.add(core);
 
-        // Outer ring
+        // Outer ring (smooth torus)
         const ring = new THREE.Mesh(
-            new THREE.TorusGeometry(0.55, 0.04, 8, 24),
+            new THREE.TorusGeometry(0.55, 0.03, 12, 32),
             m.clone()
         );
         ring.material.transparent = true;
-        ring.material.opacity = 0.5;
+        ring.material.opacity = 0.45;
         g.add(ring);
+
+        // Second ring (perpendicular)
+        const ring2 = new THREE.Mesh(
+            new THREE.TorusGeometry(0.48, 0.02, 10, 28),
+            m.clone()
+        );
+        ring2.material.transparent = true;
+        ring2.material.opacity = 0.3;
+        ring2.rotation.x = Math.PI / 2;
+        g.add(ring2);
 
         // Inner glow
         const glowMat = new THREE.SpriteMaterial({
@@ -1673,14 +2408,14 @@
             if (px - pHW > ox + obs.halfW || px + pHW < ox - obs.halfW) continue;
 
             if (obs.type === "train") {
-                if (py < 3.0) return true;
+                if (py < 3.4) return true;
             } else if (obs.type === "upperBarrier") {
-                const barY = obs.yCenter || 1.5;
+                const barY = obs.yCenter || 1.6;
                 if (py + pH > barY - obs.halfH && py < barY + obs.halfH) return true;
             } else if (obs.type === "lowBarrier") {
-                if (py < obs.halfH * 2 + 0.1) return true;
+                if (py < obs.halfH * 2 + 0.3) return true;
             } else if (obs.type === "barrier") {
-                if (py < 1.4) return true;
+                if (py < 2.0) return true;
             }
         }
         return false;
@@ -1691,7 +2426,7 @@
         const px = player.position.x;
         const py = player.position.y;
         const pz = player.position.z;
-        const magnetRange = state.magnetTimer > 0 ? 4.5 : 1.2;
+        const magnetRange = state.magnetTimer > 0 ? 5.0 : 1.3;
 
         for (const c of coins) {
             if (c.collected) continue;
@@ -1701,12 +2436,15 @@
             const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
             if (state.magnetTimer > 0 && dist < magnetRange) {
-                c.mesh.position.x = lerp(c.mesh.position.x, px, 0.18);
-                c.mesh.position.y = lerp(c.mesh.position.y, py + 1, 0.18);
-                c.mesh.position.z = lerp(c.mesh.position.z, pz, 0.18);
+                // Smooth magnetic pull with acceleration
+                const pullStrength = 0.12 + (1 - dist / magnetRange) * 0.15;
+                c.mesh.position.x = lerp(c.mesh.position.x, px, pullStrength);
+                c.mesh.position.y = lerp(c.mesh.position.y, py + 1, pullStrength);
+                c.mesh.position.z = lerp(c.mesh.position.z, pz, pullStrength);
+                c.mesh.rotation.y += 0.15;
             }
 
-            if (dist < 1.2) {
+            if (dist < 1.3) {
                 c.collected = true;
                 c.mesh.visible = false;
                 const pts = 10 * state.multiplier;
@@ -1714,7 +2452,7 @@
                 state.score += pts;
                 sfx.coin();
                 popCoinIcon();
-                spawnSparks(c.mesh.position, 4);
+                spawnSparks(c.mesh.position, 3);
                 showFloatingText(`+${pts}`, c.mesh.position);
             }
         }
@@ -1728,7 +2466,7 @@
                 p.collected = true;
                 p.mesh.visible = false;
                 sfx.powerup();
-                spawnSparks(p.mesh.position, 8);
+                spawnSparks(p.mesh.position, 10);
                 if (p.type === "magnet") {
                     state.magnetTimer = MAGNET_DUR;
                     showPowerup("🧲 MAGNET");
@@ -1741,37 +2479,74 @@
         }
     }
 
-    /* ─────────── floating text ─────────── */
+    /* ─────────── floating text (high-quality, professional) ─────────── */
     const floatingTexts = [];
+    // Pre-create a reusable canvas for floating text to reduce GC
+    const _ftCanvas = document.createElement("canvas");
+    _ftCanvas.width = 256;
+    _ftCanvas.height = 80;
 
     function showFloatingText(text, pos) {
-        const c = document.createElement("canvas");
-        c.width = 128; c.height = 48;
+        const c = _ftCanvas;
         const ctx = c.getContext("2d");
-        ctx.font = "bold 28px Poppins, sans-serif";
-        ctx.fillStyle = "#ffe94a";
-        ctx.strokeStyle = "#000";
-        ctx.lineWidth = 3;
+        ctx.clearRect(0, 0, c.width, c.height);
+
+        // Draw text with glow effect
+        ctx.save();
+        ctx.font = "bold 42px 'Poppins', sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.strokeText(text, 64, 24);
-        ctx.fillText(text, 64, 24);
+
+        // Outer glow
+        ctx.shadowColor = "rgba(255, 200, 0, 0.8)";
+        ctx.shadowBlur = 12;
+        ctx.fillStyle = "#fff8e0";
+        ctx.fillText(text, 128, 40);
+
+        // Main text with gradient
+        ctx.shadowBlur = 0;
+        const grad = ctx.createLinearGradient(0, 20, 0, 60);
+        grad.addColorStop(0, "#fff8e0");
+        grad.addColorStop(0.5, "#ffd700");
+        grad.addColorStop(1, "#ff9900");
+        ctx.fillStyle = grad;
+        ctx.fillText(text, 128, 40);
+
+        // Subtle dark outline for readability
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "rgba(80, 50, 0, 0.5)";
+        ctx.strokeText(text, 128, 40);
+        ctx.restore();
 
         const tex = new THREE.CanvasTexture(c);
-        const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+        tex.needsUpdate = true;
+        const spriteMat = new THREE.SpriteMaterial({
+            map: tex.clone(),
+            transparent: true,
+            depthTest: false,
+            depthWrite: false,
+        });
         const sprite = new THREE.Sprite(spriteMat);
-        sprite.scale.set(1.5, 0.6, 1);
+        sprite.scale.set(1.6, 0.5, 1);
         sprite.position.copy(pos);
-        sprite.position.y += 1.5;
+        sprite.position.y += 1.8;
+        sprite.position.x += (Math.random() - 0.5) * 0.3; // slight random offset
         scene.add(sprite);
-        floatingTexts.push({ sprite, life: 40 });
+        floatingTexts.push({ sprite, life: 50, maxLife: 50, startY: sprite.position.y });
     }
 
     function updateFloatingTexts() {
         for (let i = floatingTexts.length - 1; i >= 0; i--) {
             const ft = floatingTexts[i];
-            ft.sprite.position.y += 0.04;
-            ft.sprite.material.opacity = ft.life / 40;
+            const progress = 1 - (ft.life / ft.maxLife);
+            // Ease-out upward movement (fast start, slow end)
+            const easeOut = 1 - Math.pow(1 - progress, 3);
+            ft.sprite.position.y = ft.startY + easeOut * 2.0;
+            // Scale up slightly then back down
+            const scaleEase = progress < 0.15 ? (1 + (progress / 0.15) * 0.3) : (1.3 - (progress - 0.15) * 0.35);
+            ft.sprite.scale.set(1.6 * scaleEase, 0.5 * scaleEase, 1);
+            // Fade out in last 40%
+            ft.sprite.material.opacity = progress > 0.6 ? (1 - (progress - 0.6) / 0.4) : 1;
             ft.life--;
             if (ft.life <= 0) {
                 scene.remove(ft.sprite);
@@ -1956,7 +2731,8 @@
         // Start background music
         setTimeout(startBGM, 200);
 
-        if (!animating) { animating = true; animate(); }
+        lastTime = 0;
+        if (!animating) { animating = true; requestAnimationFrame(animate); }
     }
 
     function clearWorld() {
@@ -1983,19 +2759,19 @@
     function gameOver() {
         state.gameOver = true;
         state.running = false;
-        hud.classList.remove("visible");
         stopBGM();
 
-        // Screen shake
+        // Dramatic screen shake
         canvas.classList.remove("shaking");
         void canvas.offsetWidth;
         canvas.classList.add("shaking");
-        setTimeout(() => canvas.classList.remove("shaking"), 650);
+        setTimeout(() => canvas.classList.remove("shaking"), 700);
 
         sfx.hit();
 
+        // Red flash with smooth fade
         flashOverlay.classList.add("active");
-        setTimeout(() => flashOverlay.classList.remove("active"), 380);
+        setTimeout(() => flashOverlay.classList.remove("active"), 450);
 
         let isNew = false;
         if (state.score > state.highScore) {
@@ -2009,7 +2785,9 @@
         finalBest.textContent = state.highScore.toLocaleString();
         newBestBadge.style.display = isNew ? "block" : "none";
 
-        setTimeout(() => { gameOverScreen.style.display = "flex"; }, 700);
+        // Delayed HUD hide and game over screen for dramatic effect
+        setTimeout(() => { hud.classList.remove("visible"); }, 300);
+        setTimeout(() => { gameOverScreen.style.display = "flex"; }, 850);
     }
 
     function togglePause() {
@@ -2037,86 +2815,118 @@
 
     /* ─────────── main loop ─────────── */
     let animating = false;
+    let lastTime = 0;
+    const TARGET_DT = 1000 / 60; // 60 fps baseline
 
-    function animate() {
+    function animate(now) {
         if (!animating) return;
         requestAnimationFrame(animate);
 
         if (!state.running || state.paused || state.gameOver) {
+            lastTime = now;
             renderer.render(scene, camera);
             return;
         }
 
+        // Delta-time: smooth frame-rate independent movement
+        if (!lastTime) lastTime = now;
+        const rawDt = now - lastTime;
+        lastTime = now;
+        // Clamp dt to avoid spiral of death on tab-switch / stutter
+        const dt = Math.min(rawDt, 50) / TARGET_DT; // 1.0 at 60fps
+
         state.frame++;
 
-        // Speed ramp
-        state.speed = Math.min(state.speed + SPEED_INC, MAX_SPEED);
+        // Speed ramp (dt-scaled)
+        state.speed = Math.min(state.speed + SPEED_INC * dt, MAX_SPEED);
 
-        // Move forward
-        player.position.z -= state.speed;
-        state.distance += state.speed;
+        // Move forward (dt-scaled)
+        const moveStep = state.speed * dt;
+        player.position.z -= moveStep;
+        state.distance += moveStep;
 
         // Score from distance
         if (state.frame % 6 === 0) state.score += state.multiplier;
 
-        // Lane switching
+        // Lane switching (smooth ease with acceleration, dt-scaled)
         const targetX = LANES[state.targetLane];
-        player.position.x = lerp(player.position.x, targetX, LANE_SWITCH);
+        const laneError = targetX - player.position.x;
+        const laneLerp = 1 - Math.pow(1 - LANE_SWITCH * (1 + Math.abs(laneError) * 0.3), dt);
+        player.position.x += laneError * laneLerp;
         state.laneIndex = state.targetLane;
 
-        // Jump / gravity
+        // Jump / gravity (with smooth landing, dt-scaled)
         if (state.jumping) {
-            player.position.y += state.yVel;
-            state.yVel += GRAVITY;
+            player.position.y += state.yVel * dt;
+            state.yVel += GRAVITY * dt;
+            // Tilt character slightly when in air
+            if (playerParts) {
+                playerParts.torso.rotation.x = state.yVel > 0 ? -0.08 : 0.06;
+            }
             if (player.position.y <= GROUND_Y) {
                 player.position.y = GROUND_Y;
                 state.yVel = 0;
                 state.jumping = false;
-                spawnDust(player.position, 4);
+                spawnDust(player.position, 5);
+                // Landing squash effect
+                if (playerParts) {
+                    playerParts.torso.rotation.x = 0;
+                }
             }
         }
 
-        // Roll
+        // Roll (dt-scaled)
         if (state.rolling) {
-            state.rollTimer--;
+            state.rollTimer -= dt;
             if (state.rollTimer <= 0) state.rolling = false;
         }
 
-        // Timers
-        if (state.magnetTimer > 0) state.magnetTimer--;
+        // Timers (dt-scaled)
+        if (state.magnetTimer > 0) state.magnetTimer -= dt;
         if (state.multiplierTimer > 0) {
-            state.multiplierTimer--;
+            state.multiplierTimer -= dt;
             if (state.multiplierTimer <= 0) state.multiplier = 1;
         }
-        if (state.invulnTimer > 0) state.invulnTimer--;
+        if (state.invulnTimer > 0) state.invulnTimer -= dt;
 
-        // Dust particles while running (throttled — every 10 frames to reduce GC pressure)
-        if (state.frame % 10 === 0 && !state.jumping) {
-            spawnDust(player.position, 1);
+        // Dust particles while running (subtle trail — every 8 frames)
+        if (state.frame % 8 === 0 && !state.jumping) {
+            spawnDust(player.position, 2);
         }
 
         // Animate character
         animatePlayer(state.frame);
 
-        // Animate coins (spin + bob) — only within visible range to avoid iterating entire array
+        // Animate coins (smooth spin + gentle bob) — only within visible range
         const pz = player.position.z;
         for (const c of coins) {
             if (!c.collected && Math.abs(c.mesh.position.z - pz) < COIN_ANIM_RANGE) {
                 c.mesh.rotation.y += COIN_SPIN;
-                c.mesh.position.y += Math.sin(state.frame * 0.05 + c.z) * 0.002;
+                // Smooth sine bob (per-coin phase offset for variety)
+                c.mesh.position.y = (c.baseY || 1.0) + Math.sin(state.frame * 0.04 + c.z * 0.5) * 0.12;
+                // Subtle glow pulse on the sprite child
+                const glowChild = c.mesh.children[c.mesh.children.length - 1];
+                if (glowChild && glowChild.material) {
+                    glowChild.material.opacity = 0.12 + Math.sin(state.frame * 0.06 + c.z) * 0.06;
+                }
             }
         }
 
-        // Animate powerups
+        // Animate powerups (smooth rotation + bob)
         for (const p of powerups) {
             if (!p.collected) {
-                p.mesh.rotation.y += 0.04;
-                p.mesh.children[0].rotation.x += 0.02;
-                p.mesh.position.y = 1.5 + Math.sin(state.frame * 0.06) * 0.35;
-                // Ring rotation
+                p.mesh.rotation.y += 0.03;
+                p.mesh.children[0].rotation.x += 0.015;
+                p.mesh.children[0].rotation.z += 0.01;
+                p.mesh.position.y = 1.5 + Math.sin(state.frame * 0.045) * 0.3;
+                // Rings orbit smoothly
                 if (p.mesh.children[1]) {
-                    p.mesh.children[1].rotation.x += 0.03;
-                    p.mesh.children[1].rotation.z += 0.02;
+                    p.mesh.children[1].rotation.x += 0.025;
+                    p.mesh.children[1].rotation.z += 0.015;
+                }
+                if (p.mesh.children[2]) {
+                    p.mesh.children[2].rotation.y += 0.02;
+                    p.mesh.children[2].rotation.z += 0.03;
                 }
             }
         }
@@ -2125,7 +2935,7 @@
         spawnWorld();
         manageGround();
         collectItems();
-        updateParticles();
+        updateParticles(dt);
         checkMilestones();
 
         // Collision
@@ -2139,13 +2949,17 @@
 
         updateFloatingTexts();
 
-        // Camera follow (smooth)
+        // Camera follow (silky smooth with dynamic framing, dt-scaled)
         const camTargetZ = player.position.z + CAM_Z;
-        const camTargetX = player.position.x * 0.35;
-        camera.position.z = lerp(camera.position.z, camTargetZ, 0.12);
-        camera.position.x = lerp(camera.position.x, camTargetX, 0.08);
-        camera.position.y = lerp(camera.position.y, CAM_Y + Math.abs(player.position.x) * 0.08, 0.06);
-        camera.lookAt(player.position.x * 0.25, CAM_LOOKAT_Y, player.position.z - 12);
+        const camTargetX = player.position.x * 0.3;
+        const camTargetY = CAM_Y + Math.abs(player.position.x) * 0.06 + (state.jumping ? state.yVel * 2 : 0);
+        camera.position.z = lerp(camera.position.z, camTargetZ, 1 - Math.pow(1 - 0.09, dt));
+        camera.position.x = lerp(camera.position.x, camTargetX, 1 - Math.pow(1 - 0.06, dt));
+        camera.position.y = lerp(camera.position.y, camTargetY, 1 - Math.pow(1 - 0.05, dt));
+        // Look-at with smooth transition (slight look-ahead based on lane)
+        const lookX = lerp(camera.position.x, player.position.x * 0.2, 0.05);
+        const lookY = lerp(CAM_LOOKAT_Y, CAM_LOOKAT_Y + (state.jumping ? 0.5 : 0), 0.1);
+        camera.lookAt(lookX, lookY, player.position.z - 13);
 
         // Player light follows every frame (cheap position set)
         playerLight.position.set(player.position.x, 3, player.position.z + 2);
@@ -2158,14 +2972,19 @@
             renderer.shadowMap.needsUpdate = true;
         }
 
-        // Fog colour shift — throttled to every 6 frames (imperceptible)
-        if (state.frame % 6 === 0) {
+        // Fog colour shift — smooth atmospheric transition
+        if (state.frame % 4 === 0) {
             const speedFactor = (state.speed - RUN_SPEED) / (MAX_SPEED - RUN_SPEED);
-            const fogR = 0.05 + speedFactor * 0.03;
-            const fogG = 0.03 + speedFactor * 0.01;
-            const fogB = 0.12 + speedFactor * 0.03;
-            scene.background.setRGB(fogR, fogG, fogB);
-            scene.fog.color.setRGB(fogR, fogG, fogB);
+            const fogR = 0.05 + speedFactor * 0.04;
+            const fogG = 0.03 + speedFactor * 0.015;
+            const fogB = 0.12 + speedFactor * 0.04;
+            const curBg = scene.background;
+            scene.background.setRGB(
+                lerp(curBg.r, fogR, 0.05),
+                lerp(curBg.g, fogG, 0.05),
+                lerp(curBg.b, fogB, 0.05)
+            );
+            scene.fog.color.copy(scene.background);
         }
 
         // HUD DOM updates — every 2 frames is unnoticeable and halves layout work
@@ -2199,7 +3018,7 @@
         renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    /* ─────────── initial scene (title screen background) ─────────── */
+    /* ─────────── initial scene (cinematic title screen) ─────────── */
     function initTitleScene() {
         for (let i = 0; i < 3; i++) {
             makeGroundChunk(-CHUNK_LEN * i + CHUNK_LEN / 2);
@@ -2215,9 +3034,11 @@
             if (state.running) return;
             requestAnimationFrame(titleAnimate);
             titleFrame++;
-            camera.position.x = Math.sin(titleFrame * 0.002) * 3;
-            camera.position.y = CAM_Y + Math.sin(titleFrame * 0.004) * 0.6;
-            camera.position.z = 8 + Math.sin(titleFrame * 0.003) * 2;
+            // Smoother, more cinematic camera orbit
+            const orbitSpeed = 0.0015;
+            camera.position.x = Math.sin(titleFrame * orbitSpeed) * 3.5;
+            camera.position.y = CAM_Y + Math.sin(titleFrame * orbitSpeed * 2.5) * 0.5;
+            camera.position.z = 9 + Math.sin(titleFrame * orbitSpeed * 1.8) * 2.5;
             camera.lookAt(0, CAM_LOOKAT_Y, -25);
             renderer.render(scene, camera);
         }
