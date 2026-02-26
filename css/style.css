@@ -1,6 +1,12 @@
 /* ============================================================
-   SUBWAY SURFERS — Run on the Railway
-   Professional UI / HUD Stylesheet
+   Run on the Railway — Sub Endless Runner
+   UI Stylesheet — matches game's night-railway atmosphere
+   Palette from game engine:
+     bg        #0d0820  (scene.background / fog)
+     purple    #8866cc  (hemisphere sky light)
+     orange    #ffa040  (player point light / warm glow)
+     silver    #aaaabb  (rail metalness material)
+     cream     #ffeedd  (directional light / warm text)
    ============================================================ */
 
 /* ---------- reset & base ---------- */
@@ -17,7 +23,8 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #0a0a12;
+  background: #0d0820;
+  color: #f0ecff;
   font-family: "Poppins", sans-serif;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
@@ -55,9 +62,10 @@ canvas#gameCanvas {
   align-items: center;
   justify-content: center;
   z-index: 20;
-  background: rgba(6, 6, 18, 0.72);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  /* tunnel depth — mirrors the game's fog 0d0820 */
+  background: rgba(8, 5, 20, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   animation: fadeIn 0.35s ease;
 }
 
@@ -71,16 +79,18 @@ canvas#gameCanvas {
 }
 
 .screen-card {
-  background: linear-gradient(135deg, #181830 0%, #0e0e22 100%);
-  border: 1.5px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(160deg, #17102e 0%, #0f0a1f 100%);
+  border: 1px solid rgba(136, 102, 204, 0.22);
   border-radius: 24px;
   padding: 40px 36px 32px;
   text-align: center;
   max-width: 420px;
   width: 90%;
   box-shadow:
-    0 24px 80px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    0 0 0 1px rgba(255, 160, 64, 0.06),
+    0 24px 72px rgba(0, 0, 0, 0.7),
+    0 0 60px rgba(136, 102, 204, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   animation: cardPop 0.4s cubic-bezier(0.2, 1.1, 0.5, 1);
 }
 
@@ -97,134 +107,167 @@ canvas#gameCanvas {
 
 /* ---------- logo ---------- */
 .game-logo {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
   line-height: 1;
 }
-.logo-subway {
-  display: block;
-  font-family: "Bangers", cursive;
-  font-size: 3.2rem;
-  letter-spacing: 6px;
-  color: #ffe94a;
-  text-shadow:
-    0 3px 0 #c8a100,
-    0 6px 20px rgba(255, 233, 74, 0.35);
+/* pill badge — neon purple from hemisphere light */
+.logo-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #6644bb 0%, #9d71e8 100%);
+  color: #fff;
+  font-family: "Poppins", sans-serif;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 3.5px;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border-radius: 20px;
+  margin-bottom: 14px;
+  box-shadow:
+    0 2px 16px rgba(136, 102, 204, 0.45),
+    0 0 30px rgba(136, 102, 204, 0.2);
 }
-.logo-surfers {
-  display: block;
-  font-family: "Lilita One", sans-serif;
-  font-size: 2.6rem;
-  letter-spacing: 4px;
-  color: #ff5e3a;
-  text-shadow:
-    0 3px 0 #b52900,
-    0 6px 20px rgba(255, 94, 58, 0.35);
-  margin-top: -4px;
-}
-.logo-subtitle {
+/* "Run on the" — silver rail colour */
+.logo-pretext {
   display: block;
   font-family: "Poppins", sans-serif;
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.45);
-  letter-spacing: 3px;
-  margin-top: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #aaaabb;
+  letter-spacing: 5px;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+/* "Railway" — warm cream directional-light tint */
+.logo-title {
+  display: block;
+  font-family: "Poppins", sans-serif;
+  font-size: 3.2rem;
+  font-weight: 900;
+  color: #ffeedd;
+  letter-spacing: 2px;
+  line-height: 1.05;
+  margin-top: 2px;
+  text-shadow:
+    0 0 40px rgba(255, 160, 64, 0.35),
+    0 4px 24px rgba(255, 160, 64, 0.2);
+}
+.logo-tagline {
+  display: block;
+  font-family: "Poppins", sans-serif;
+  font-size: 0.64rem;
+  font-weight: 600;
+  color: rgba(170, 170, 187, 0.5);
+  letter-spacing: 5px;
+  text-transform: uppercase;
+  margin-top: 10px;
 }
 
 /* ---------- high-score line ---------- */
 .high-score-line {
-  font-size: 0.95rem;
-  color: #ffe94a;
+  font-size: 0.9rem;
+  color: #ffa040;
   margin-bottom: 18px;
   font-weight: 700;
   letter-spacing: 1px;
   min-height: 1.3em;
+  text-shadow: 0 0 14px rgba(255, 160, 64, 0.4);
 }
 
 /* ---------- buttons ---------- */
+/* primary — warm orange player-light glow */
 .btn-primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: linear-gradient(135deg, #ff5e3a 0%, #ff2d87 100%);
-  color: #fff;
+  background: linear-gradient(135deg, #cc6600 0%, #ff9933 60%, #ffa040 100%);
+  color: #0d0820;
   font-family: "Poppins", sans-serif;
   font-weight: 800;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   letter-spacing: 2px;
   border: none;
   border-radius: 60px;
   padding: 16px 48px;
   cursor: pointer;
-  box-shadow: 0 6px 30px rgba(255, 45, 135, 0.35);
+  box-shadow:
+    0 6px 28px rgba(255, 160, 64, 0.45),
+    0 0 50px rgba(255, 160, 64, 0.15);
   transition:
     transform 0.15s ease,
     box-shadow 0.15s ease;
 }
 .btn-primary:hover {
   transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 10px 40px rgba(255, 45, 135, 0.5);
+  box-shadow:
+    0 10px 40px rgba(255, 160, 64, 0.6),
+    0 0 70px rgba(255, 160, 64, 0.2);
 }
 .btn-primary:active {
   transform: scale(0.96);
 }
 
+/* secondary — subtle rail-silver outline */
 .btn-secondary {
   display: inline-block;
   margin-top: 14px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(170, 170, 187, 0.7);
   font-family: "Poppins", sans-serif;
   font-weight: 600;
   font-size: 0.95rem;
-  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  border: 1.5px solid rgba(136, 102, 204, 0.25);
   border-radius: 40px;
   padding: 10px 32px;
   cursor: pointer;
   transition:
     background 0.15s ease,
-    color 0.15s ease;
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: rgba(136, 102, 204, 0.12);
+  color: #f0ecff;
+  border-color: rgba(136, 102, 204, 0.45);
 }
 
 /* ---------- controls hints ---------- */
 .controls-hint {
   display: flex;
   justify-content: center;
-  gap: 14px;
+  gap: 10px;
   flex-wrap: wrap;
   margin-top: 20px;
-  font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.7rem;
+  color: rgba(170, 170, 187, 0.5);
   letter-spacing: 0.5px;
 }
 .controls-hint span {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(136, 102, 204, 0.1);
+  border: 1px solid rgba(136, 102, 204, 0.18);
   padding: 4px 10px;
   border-radius: 6px;
+  color: #aaaabb;
+  font-weight: 500;
 }
 .swipe-hint {
   margin-top: 10px;
-  font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.25);
+  font-size: 0.7rem;
+  color: rgba(170, 170, 187, 0.28);
 }
 
 /* ---------- game over ---------- */
 .gameover-title {
-  font-family: "Bangers", cursive;
-  font-size: 3rem;
-  color: #ff3b4a;
-  letter-spacing: 6px;
-  text-shadow:
-    0 3px 0 #8b0015,
-    0 8px 28px rgba(255, 59, 74, 0.4);
+  font-family: "Poppins", sans-serif;
+  font-size: 2.4rem;
+  font-weight: 900;
+  color: #ff4455;
+  letter-spacing: 3px;
 }
 .gameover-subtitle {
   font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(170, 170, 187, 0.5);
   margin-bottom: 24px;
 }
 .gameover-stats {
@@ -237,7 +280,8 @@ canvas#gameCanvas {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(136, 102, 204, 0.08);
+  border: 1px solid rgba(136, 102, 204, 0.16);
   border-radius: 16px;
   padding: 14px 20px;
   min-width: 90px;
@@ -247,48 +291,60 @@ canvas#gameCanvas {
   margin-bottom: 4px;
 }
 .stat-value {
-  font-family: "Lilita One", sans-serif;
-  font-size: 1.6rem;
-  color: #fff;
+  font-family: "Poppins", sans-serif;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #ffeedd;
 }
+/* coins — warm orange player light */
 .coin-color {
-  color: #ffe94a;
+  color: #ffa040;
+  text-shadow: 0 0 12px rgba(255, 160, 64, 0.4);
 }
+/* best — neon purple */
 .best-color {
-  color: #4affb0;
+  color: #9d71e8;
+  text-shadow: 0 0 12px rgba(157, 113, 232, 0.4);
 }
 .stat-label {
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.64rem;
+  color: rgba(170, 170, 187, 0.45);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
+  font-weight: 600;
+  margin-top: 2px;
 }
 
 .new-best {
-  font-family: "Bangers", cursive;
-  font-size: 1.4rem;
-  color: #ffe94a;
-  animation: pulse 1s ease infinite alternate;
+  font-family: "Poppins", sans-serif;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #ffa040;
+  animation: pulse 0.9s ease infinite alternate;
   margin-bottom: 16px;
+  letter-spacing: 1px;
+  text-shadow: 0 0 16px rgba(255, 160, 64, 0.5);
 }
 @keyframes pulse {
   from {
     transform: scale(1);
-    text-shadow: 0 0 10px rgba(255, 233, 74, 0.3);
+    text-shadow: 0 0 10px rgba(255, 160, 64, 0.35);
   }
   to {
-    transform: scale(1.08);
-    text-shadow: 0 0 24px rgba(255, 233, 74, 0.7);
+    transform: scale(1.06);
+    text-shadow: 0 0 28px rgba(255, 160, 64, 0.7);
   }
 }
 
 /* ---------- pause ---------- */
 .pause-title {
-  font-family: "Bangers", cursive;
-  font-size: 2.8rem;
-  color: #fff;
-  letter-spacing: 6px;
+  font-family: "Poppins", sans-serif;
+  font-size: 2.4rem;
+  font-weight: 900;
+  color: #ffeedd;
+  letter-spacing: 5px;
   margin-bottom: 24px;
+  text-shadow: 0 0 30px rgba(255, 160, 64, 0.2);
 }
 
 /* ---------- HUD ---------- */
@@ -321,10 +377,10 @@ canvas#gameCanvas {
 .hud-score-box,
 .hud-coin-box,
 .hud-distance-box {
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(13, 8, 32, 0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(136, 102, 204, 0.18);
   border-radius: 12px;
   padding: 6px 14px;
   display: flex;
@@ -333,41 +389,49 @@ canvas#gameCanvas {
 }
 
 .hud-label {
-  font-size: 0.6rem;
+  font-size: 0.58rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(170, 170, 187, 0.5);
   letter-spacing: 1.5px;
   text-transform: uppercase;
 }
 .hud-value {
-  font-family: "Lilita One", sans-serif;
-  font-size: 1.2rem;
-  color: #fff;
+  font-family: "Poppins", sans-serif;
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: #ffeedd;
   min-width: 40px;
   text-align: right;
 }
 .hud-dist {
-  font-family: "Lilita One", sans-serif;
-  font-size: 1rem;
-  color: rgba(255, 255, 255, 0.7);
+  font-family: "Poppins", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #aaaabb;
 }
 
+/* coin dot — warm orange glow matching player light */
 .coin-icon-hud {
   display: inline-block;
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #ffe94a 60%, #c8a100);
-  box-shadow: 0 0 6px rgba(255, 233, 74, 0.5);
+  background: radial-gradient(
+    circle at 35% 35%,
+    #ffcf70 40%,
+    #ffa040 80%,
+    #cc6600
+  );
+  box-shadow: 0 0 8px rgba(255, 160, 64, 0.6);
   flex-shrink: 0;
 }
 
 .hud-btn {
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(13, 8, 32, 0.62);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(136, 102, 204, 0.18);
   border-radius: 12px;
-  color: #fff;
+  color: #aaaabb;
   width: 42px;
   height: 42px;
   font-size: 1rem;
@@ -375,22 +439,28 @@ canvas#gameCanvas {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 }
 .hud-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(136, 102, 204, 0.18);
+  color: #f0ecff;
 }
 
-/* multiplier bar */
+/* multiplier — orange player glow */
 .hud-multiplier {
   position: fixed;
   top: 64px;
   left: 50%;
   transform: translateX(-50%);
-  font-family: "Bangers", cursive;
-  font-size: 1.4rem;
-  color: #ffe94a;
-  text-shadow: 0 0 12px rgba(255, 233, 74, 0.5);
+  font-family: "Poppins", sans-serif;
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #ffa040;
+  text-shadow:
+    0 0 14px rgba(255, 160, 64, 0.6),
+    0 0 40px rgba(255, 160, 64, 0.3);
   opacity: 0;
   transition: opacity 0.3s ease;
   pointer-events: none;
@@ -399,17 +469,17 @@ canvas#gameCanvas {
   opacity: 1;
 }
 
-/* powerup indicator */
+/* powerup — neon purple */
 .hud-powerup {
   position: fixed;
   top: 95px;
   left: 50%;
   transform: translateX(-50%);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  letter-spacing: 2px;
-  color: #4affb0;
-  text-shadow: 0 0 10px rgba(74, 255, 176, 0.5);
+  letter-spacing: 2.5px;
+  color: #9d71e8;
+  text-shadow: 0 0 14px rgba(136, 102, 204, 0.65);
   opacity: 0;
   transition: opacity 0.3s ease;
   pointer-events: none;
@@ -423,11 +493,11 @@ canvas#gameCanvas {
   .screen-card {
     padding: 28px 20px 24px;
   }
-  .logo-subway {
+  .logo-title {
     font-size: 2.4rem;
   }
-  .logo-surfers {
-    font-size: 2rem;
+  .logo-pretext {
+    font-size: 0.85rem;
   }
   .btn-primary {
     padding: 14px 36px;
@@ -454,4 +524,217 @@ canvas#gameCanvas {
   .swipe-hint {
     display: none;
   }
+}
+
+/* ============================================================
+   ENHANCED — Gold flash / Milestone / Screen Shake / BGM
+   ============================================================ */
+
+/* ---------- gold flash (milestone celebration) ---------- */
+/* gold flash — orange glow burst matching player light */
+#goldFlash {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(255, 160, 64, 0.55) 0%,
+    rgba(136, 102, 204, 0.25) 45%,
+    transparent 72%
+  );
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+#goldFlash.active {
+  opacity: 1;
+}
+
+/* ---------- milestone notification ---------- */
+/* milestone — warm cream with orange + purple glow */
+#milestoneNotif {
+  position: fixed;
+  top: 48%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.4);
+  font-family: "Poppins", sans-serif;
+  font-size: 2.8rem;
+  font-weight: 900;
+  color: #ffeedd;
+  text-shadow:
+    0 0 30px rgba(255, 160, 64, 0.85),
+    0 4px 0 #cc6600,
+    0 8px 30px rgba(136, 102, 204, 0.55);
+  white-space: nowrap;
+  z-index: 12;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    transform 0.32s cubic-bezier(0.2, 1.35, 0.5, 1),
+    opacity 0.25s ease;
+  letter-spacing: 4px;
+}
+#milestoneNotif.active {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+#milestoneNotif.fade-out {
+  opacity: 0;
+  transform: translate(-50%, -60%) scale(1.08);
+  transition:
+    transform 0.45s ease,
+    opacity 0.45s ease;
+}
+
+/* ---------- screen shake on canvas ---------- */
+@keyframes camShake {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  10% {
+    transform: translate(-8px, -6px) rotate(-0.6deg);
+  }
+  20% {
+    transform: translate(8px, 5px) rotate(0.6deg);
+  }
+  30% {
+    transform: translate(-6px, 4px) rotate(-0.4deg);
+  }
+  40% {
+    transform: translate(6px, -4px) rotate(0.4deg);
+  }
+  50% {
+    transform: translate(-5px, -6px) rotate(-0.5deg);
+  }
+  60% {
+    transform: translate(5px, 6px) rotate(0.5deg);
+  }
+  70% {
+    transform: translate(-3px, 3px) rotate(-0.3deg);
+  }
+  80% {
+    transform: translate(3px, -3px) rotate(0.3deg);
+  }
+  90% {
+    transform: translate(-1px, 1px) rotate(-0.1deg);
+  }
+}
+canvas#gameCanvas.shaking {
+  animation: camShake 0.6s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* ---------- enhanced game over card entry ---------- */
+.gameover-card {
+  animation: gameoverBurst 0.55s cubic-bezier(0.2, 1.25, 0.4, 1) both !important;
+}
+@keyframes gameoverBurst {
+  0% {
+    transform: scale(1.3) translateY(-30px);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(0.96) translateY(4px);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ---------- BUSTED title glow pulse ---------- */
+.gameover-title {
+  animation: bustPulse 0.9s ease infinite alternate;
+}
+@keyframes bustPulse {
+  from {
+    text-shadow: 0 4px 20px rgba(255, 68, 85, 0.25);
+  }
+  to {
+    text-shadow:
+      0 4px 36px rgba(255, 68, 85, 0.65),
+      0 0 60px rgba(255, 68, 85, 0.3),
+      0 0 90px rgba(136, 102, 204, 0.15);
+  }
+}
+
+/* ---------- coin collect flash on HUD ---------- */
+@keyframes coinPop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.5);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.coin-icon-hud.pop {
+  animation: coinPop 0.22s cubic-bezier(0.2, 1.4, 0.5, 1) both;
+}
+
+/* ---------- speed badge ---------- */
+#hudSpeed {
+  font-family: "Poppins", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #aaaabb;
+  letter-spacing: 1px;
+  padding: 3px 8px;
+  background: rgba(13, 8, 32, 0.6);
+  border-radius: 8px;
+  border: 1px solid rgba(136, 102, 204, 0.16);
+}
+
+/* ---------- combo streak indicator ---------- */
+#hudStreak {
+  position: fixed;
+  top: 64px;
+  right: 20px;
+  font-family: "Poppins", sans-serif;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #ffa040;
+  text-shadow: 0 0 14px rgba(255, 160, 64, 0.6);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+#hudStreak.visible {
+  opacity: 1;
+}
+
+/* ---------- win/level screen ---------- */
+/* win card — neon purple glow */
+.win-card {
+  border: 1.5px solid rgba(136, 102, 204, 0.45) !important;
+  box-shadow:
+    0 24px 72px rgba(0, 0, 0, 0.7),
+    0 0 60px rgba(136, 102, 204, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+
+/* ---------- flash overlay (hit) improve ---------- */
+#flashOverlay {
+  transition: opacity 0.08s ease;
+}
+
+/* ---------- score milestone sparkle bar ---------- */
+/* milestone bar — orange → purple matching game palette */
+.milestone-bar {
+  width: 100%;
+  height: 3px;
+  background: rgba(136, 102, 204, 0.1);
+  border-radius: 2px;
+  margin-top: 10px;
+  overflow: hidden;
+}
+.milestone-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffa040, #9d71e8);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 8px rgba(255, 160, 64, 0.4);
 }

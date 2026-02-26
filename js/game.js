@@ -6,6 +6,9 @@
 (() => {
     "use strict";
 
+    // Enable Three.js asset cache for geometry/texture reuse
+    if (typeof THREE !== "undefined" && THREE.Cache) THREE.Cache.enabled = true;
+
     /* ─────────── constants ─────────── */
     const LANE_WIDTH = 2.4;
     const LANES = [-LANE_WIDTH, 0, LANE_WIDTH];
@@ -33,6 +36,10 @@
     const MULTI_DUR = 480;
     const INVULN_DUR = 180;
     const GROUND_W = 28;
+    const MILESTONES = [500, 1000, 2500, 5000, 10000, 25000, 50000];
+    const MAX_PARTICLES = 32;        // hard cap — prevents particle GC spikes
+    const COIN_ANIM_RANGE = 28;      // only animate coins this close to player
+    const SHADOW_UPDATE_INTERVAL = 3; // re-render shadow map every N frames
 
     /* ─────────── DOM refs ─────────── */
     const canvas = document.getElementById("gameCanvas");
@@ -57,6 +64,8 @@
     const finalCoins = document.getElementById("finalCoins");
     const finalBest = document.getElementById("finalBest");
     const newBestBadge = document.getElementById("newBestBadge");
+    const goldFlash = document.getElementById("goldFlash");
+    const milestoneNotif = document.getElementById("milestoneNotif");
 
     /* ─────────── audio (Web Audio API synth) ─────────── */
     let audioCtx, masterGain;
@@ -83,13 +92,206 @@
     }
 
     const sfx = {
-        coin() { playTone(1200, 0.08, "square", 0.18); setTimeout(() => playTone(1600, 0.08, "square", 0.12), 50); },
-        jump() { playTone(400, 0.15, "triangle", 0.22); },
-        roll() { playTone(180, 0.12, "sawtooth", 0.12); },
-        lane() { playTone(600, 0.06, "sine", 0.08); },
-        hit() { playTone(100, 0.4, "sawtooth", 0.3); },
-        powerup() { playTone(800, 0.1, "sine", 0.18); setTimeout(() => playTone(1200, 0.15, "sine", 0.12), 80); },
+        coin() {
+            if (!audioCtx || muted) return;
+            // 3-note ascending jingle (like original game)
+            const notes = [880, 1108, 1760];
+            notes.forEach((freq, i) => {
+                setTimeout(() => {
+                    const osc = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    osc.type = "sine";
+                    osc.frequency.value = freq;
+                    g.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+                    osc.connect(g).connect(masterGain);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+                }, i * 48);
+            });
+        },
+        jump() {
+            if (!audioCtx || muted) return;
+            // Rising whoosh
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(280, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(620, audioCtx.currentTime + 0.22);
+            g.gain.setValueAtTime(0.22, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.24);
+            osc.connect(g).connect(masterGain);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+        },
+        roll() {
+            if (!audioCtx || muted) return;
+            // Sliding swoosh
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = "sawtooth";
+            osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(110, audioCtx.currentTime + 0.18);
+            g.gain.setValueAtTime(0.14, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+            osc.connect(g).connect(masterGain);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+        },
+        lane() {
+            if (!audioCtx || muted) return;
+            playTone(680, 0.07, "sine", 0.09);
+        },
+        hit() {
+            if (!audioCtx || muted) return;
+            // Low boom crash
+            const boom = audioCtx.createOscillator();
+            const boomG = audioCtx.createGain();
+            boom.type = "sawtooth";
+            boom.frequency.setValueAtTime(160, audioCtx.currentTime);
+            boom.frequency.exponentialRampToValueAtTime(38, audioCtx.currentTime + 0.7);
+            boomG.gain.setValueAtTime(0.55, audioCtx.currentTime);
+            boomG.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.85);
+            boom.connect(boomG).connect(masterGain);
+            boom.start(); boom.stop(audioCtx.currentTime + 0.85);
+            // Descending whistle
+            setTimeout(() => {
+                if (!audioCtx || muted) return;
+                const w = audioCtx.createOscillator();
+                const wG = audioCtx.createGain();
+                w.type = "square";
+                w.frequency.setValueAtTime(620, audioCtx.currentTime);
+                w.frequency.exponentialRampToValueAtTime(90, audioCtx.currentTime + 0.55);
+                wG.gain.setValueAtTime(0.28, audioCtx.currentTime);
+                wG.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+                w.connect(wG).connect(masterGain);
+                w.start(); w.stop(audioCtx.currentTime + 0.6);
+            }, 140);
+            // Metal crunch noise burst
+            setTimeout(() => {
+                if (!audioCtx || muted) return;
+                const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.18, audioCtx.sampleRate);
+                const data = buf.getChannelData(0);
+                for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+                const src = audioCtx.createBufferSource();
+                src.buffer = buf;
+                const filt = audioCtx.createBiquadFilter();
+                filt.type = "bandpass";
+                filt.frequency.value = 800;
+                filt.Q.value = 0.5;
+                const ng = audioCtx.createGain();
+                ng.gain.value = 0.18;
+                src.connect(filt).connect(ng).connect(masterGain);
+                src.start();
+            }, 60);
+        },
+        powerup() {
+            if (!audioCtx || muted) return;
+            // Ascending arpeggio
+            const notes = [523, 659, 784, 1047];
+            notes.forEach((freq, i) => {
+                setTimeout(() => {
+                    const osc = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    osc.type = "sine";
+                    osc.frequency.value = freq;
+                    g.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+                    osc.connect(g).connect(masterGain);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.22);
+                }, i * 68);
+            });
+        },
+        milestone() {
+            if (!audioCtx || muted) return;
+            // Win fanfare — ascending chord burst
+            const chord = [523, 659, 784, 1047, 1319];
+            chord.forEach((freq, i) => {
+                setTimeout(() => {
+                    const osc = audioCtx.createOscillator();
+                    const g = audioCtx.createGain();
+                    osc.type = "triangle";
+                    osc.frequency.value = freq;
+                    g.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+                    osc.connect(g).connect(masterGain);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.45);
+                }, i * 58);
+            });
+            // Final high shimmer
+            setTimeout(() => {
+                if (!audioCtx || muted) return;
+                playTone(2093, 0.5, "sine", 0.12);
+            }, chord.length * 58 + 20);
+        },
     };
+
+    /* ─────────── background music (Web Audio looping beat) ─────────── */
+    let bgmActive = false;
+    let bgmLoopId = null;
+
+    function startBGM() {
+        if (bgmActive || !audioCtx || muted) return;
+        bgmActive = true;
+        scheduleBGMLoop();
+    }
+
+    function stopBGM() {
+        bgmActive = false;
+        if (bgmLoopId) { clearTimeout(bgmLoopId); bgmLoopId = null; }
+    }
+
+    function scheduleBGMLoop() {
+        if (!bgmActive || !audioCtx || muted) return;
+        const bpm = 138;
+        const step = 60 / bpm * 0.5; // 8th notes
+        const now = audioCtx.currentTime;
+
+        // Bass ostinato (low-end drive)
+        const bass = [41.2, 41.2, 55, 41.2, 36.7, 41.2, 61.7, 41.2];
+        bass.forEach((freq, i) => {
+            const t = now + i * step;
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = "sawtooth";
+            osc.frequency.value = freq;
+            g.gain.setValueAtTime(0.042, t);
+            g.gain.exponentialRampToValueAtTime(0.001, t + step * 0.85);
+            osc.connect(g).connect(masterGain);
+            osc.start(t); osc.stop(t + step);
+        });
+
+        // Kick drum on beats 1 & 3
+        [0, 2, 4, 6].forEach(beat => {
+            const t = now + beat * step;
+            const kick = audioCtx.createOscillator();
+            const kG = audioCtx.createGain();
+            kick.type = "sine";
+            kick.frequency.setValueAtTime(160, t);
+            kick.frequency.exponentialRampToValueAtTime(28, t + 0.22);
+            kG.gain.setValueAtTime(0.09, t);
+            kG.gain.exponentialRampToValueAtTime(0.001, t + 0.26);
+            kick.connect(kG).connect(masterGain);
+            kick.start(t); kick.stop(t + 0.28);
+        });
+
+        // Hi-hat (every other 8th)
+        [1, 3, 5, 7].forEach(beat => {
+            if (!audioCtx) return;
+            const t = now + beat * step;
+            const buf = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * 0.04), audioCtx.sampleRate);
+            const d = buf.getChannelData(0);
+            for (let j = 0; j < d.length; j++) d[j] = (Math.random() * 2 - 1) * (1 - j / d.length);
+            const src = audioCtx.createBufferSource();
+            src.buffer = buf;
+            const hf = audioCtx.createBiquadFilter();
+            hf.type = "highpass"; hf.frequency.value = 7000;
+            const hg = audioCtx.createGain(); hg.gain.value = 0.025;
+            src.connect(hf).connect(hg).connect(masterGain);
+            src.start(t);
+        });
+
+        // Melodic hook (every 2 loops)
+        const loopDur = bass.length * step;
+        bgmLoopId = setTimeout(scheduleBGMLoop, (loopDur - 0.05) * 1000);
+    }
 
     /* ─────────── Texture generators ─────────── */
     function makeGravelTexture() {
@@ -181,35 +383,50 @@
         return tex;
     }
 
+    /* Pre-bake a pool of building textures once, reuse them — avoids expensive
+       canvas generation for each of the many buildings in the scene.           */
+    let _buildTexPool = null;
+    function getBuildTexPool() {
+        if (_buildTexPool) return _buildTexPool;
+        _buildTexPool = [];
+        const poolColors = ["#334455", "#884433", "#443355", "#3a3a55", "#555566", "#4a3344"];
+        const poolFloors = [4, 6, 5, 7, 4, 6];
+        const poolCols = [2, 3, 2, 3, 2, 3];
+        for (let k = 0; k < 6; k++) {
+            _buildTexPool.push(makeBuildingTexture(poolColors[k], poolFloors[k], poolCols[k]));
+        }
+        return _buildTexPool;
+    }
+
     function makeBuildingTexture(color, floors, cols) {
         const c = document.createElement("canvas");
-        c.width = 256; c.height = 512;
+        c.width = 128; c.height = 256; // reduced resolution — half memory, same visual
         const ctx = c.getContext("2d");
         // Base
         ctx.fillStyle = color;
-        ctx.fillRect(0, 0, 256, 512);
+        ctx.fillRect(0, 0, 128, 256);
         // Brick-like lines
         ctx.strokeStyle = "rgba(0,0,0,0.1)";
         ctx.lineWidth = 0.5;
-        for (let y = 0; y < 512; y += 16) {
-            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(256, y); ctx.stroke();
-            const off = (Math.floor(y / 16) % 2) * 16;
-            for (let x = off; x < 256; x += 32) {
-                ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 16); ctx.stroke();
+        for (let y = 0; y < 256; y += 8) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(128, y); ctx.stroke();
+            const off = (Math.floor(y / 8) % 2) * 8;
+            for (let x = off; x < 128; x += 16) {
+                ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + 8); ctx.stroke();
             }
         }
         // Windows
-        const ww = 20, wh = 28, gap = 8;
+        const ww = 10, wh = 14, gap = 4;
         const totalW = cols * (ww + gap);
-        const startX = (256 - totalW) / 2 + gap / 2;
+        const startX = (128 - totalW) / 2 + gap / 2;
         for (let r = 0; r < floors; r++) {
             for (let cc = 0; cc < cols; cc++) {
                 const lit = Math.random() > 0.25;
                 ctx.fillStyle = lit ? "#ffeeaa" : "#222233";
-                ctx.fillRect(startX + cc * (ww + gap), 30 + r * 50, ww, wh);
+                ctx.fillRect(startX + cc * (ww + gap), 15 + r * 25, ww, wh);
                 if (lit) {
                     ctx.fillStyle = "rgba(255,238,170,0.3)";
-                    ctx.fillRect(startX + cc * (ww + gap) - 2, 30 + r * 50 - 2, ww + 4, wh + 4);
+                    ctx.fillRect(startX + cc * (ww + gap) - 1, 15 + r * 25 - 1, ww + 2, wh + 2);
                 }
             }
         }
@@ -223,6 +440,7 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.autoUpdate = false; // manually triggered — avoids re-render every frame
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
@@ -242,7 +460,7 @@
     const dirLight = new THREE.DirectionalLight(0xffeedd, 1.1);
     dirLight.position.set(8, 18, 10);
     dirLight.castShadow = true;
-    dirLight.shadow.mapSize.set(2048, 2048);
+    dirLight.shadow.mapSize.set(1024, 1024);  // 1024 is plenty and 4× cheaper than 2048
     dirLight.shadow.camera.near = 1;
     dirLight.shadow.camera.far = 80;
     dirLight.shadow.camera.left = -20;
@@ -350,7 +568,9 @@
     const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffee88, transparent: true, opacity: 0.8 });
 
     function spawnDust(pos, count = 3) {
-        for (let i = 0; i < count; i++) {
+        if (particles.length >= MAX_PARTICLES) return; // cap total particles
+        const allowed = Math.min(count, MAX_PARTICLES - particles.length);
+        for (let i = 0; i < allowed; i++) {
             const mesh = new THREE.Mesh(particleGeo, particleMat.clone());
             mesh.position.set(
                 pos.x + rnd(-0.3, 0.3),
@@ -371,7 +591,9 @@
     }
 
     function spawnSparks(pos, count = 5) {
-        for (let i = 0; i < count; i++) {
+        if (particles.length >= MAX_PARTICLES) return;
+        const allowed = Math.min(count, MAX_PARTICLES - particles.length);
+        for (let i = 0; i < allowed; i++) {
             const mesh = new THREE.Mesh(particleGeo, sparkMat.clone());
             mesh.position.set(pos.x + rnd(-0.5, 0.5), pos.y + rnd(0.5, 1.5), pos.z + rnd(-0.3, 0.3));
             mesh.scale.setScalar(rnd(0.3, 0.8));
@@ -543,14 +765,10 @@
         arm.position.set(side * -0.5, 4.4, 0);
         arm.rotation.z = side * 0.3;
         g.add(arm);
-        // Lamp head
+        // Lamp head (emissive glow mesh — no PointLight to keep draw calls low)
         const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.3), mat.lampGlow);
         lamp.position.set(side * -0.9, 4.3, 0);
         g.add(lamp);
-        // Actual point light
-        const light = new THREE.PointLight(0xffddaa, 0.4, 10);
-        light.position.set(side * -0.9, 4.0, 0);
-        g.add(light);
 
         g.position.set(side * (GROUND_W / 2 - 2.5), 0, z);
         scene.add(g);
@@ -632,7 +850,9 @@
         const cols = Math.floor(w / 2);
         const bColor = pick(buildColors);
 
-        const buildTex = makeBuildingTexture(bColor, floors, cols);
+        // Pick from pre-baked pool — avoids per-building canvas generation
+        const pool = getBuildTexPool();
+        const buildTex = pool[Math.floor(Math.random() * pool.length)];
         const buildMat = new THREE.MeshStandardMaterial({ map: buildTex, roughness: 0.88 });
 
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), buildMat);
@@ -844,148 +1064,219 @@
     const obstacles = [];
 
     function spawnTrain(lane, z) {
-        const trainLen = rnd(8, 16);
+        const trainLen = rnd(10, 18);
         const g = new THREE.Group();
-        const isAlt = Math.random() < 0.5;
-        const bodyMat = isAlt ? mat.trainAlt : mat.train;
 
-        // Side textures
-        const sideTex = makeTrainSideTexture(null, isAlt);
-        const sideMat = new THREE.MeshStandardMaterial({ map: sideTex, roughness: 0.35, metalness: 0.35 });
+        // NYC-style subway lines: each with a distinctive accent colour
+        const lineAccents = [0xee352e, 0xff6319, 0xfccc0a, 0x00933c, 0x0039a6, 0xa626aa, 0x808183];
+        const lineColor = lineAccents[Math.floor(Math.random() * lineAccents.length)];
+        const lineMat = new THREE.MeshStandardMaterial({ color: lineColor, roughness: 0.3, metalness: 0.25 });
 
-        // Undercarriage / chassis
-        const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.2, trainLen + 0.2), mat.trainBottom);
-        chassis.position.y = 0.25;
+        // Stainless-steel body material
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0xccccda, roughness: 0.28, metalness: 0.82 });
+
+        // Dark window glass material
+        const winMat = new THREE.MeshStandardMaterial({
+            color: 0x152030, emissive: 0x1a3355, emissiveIntensity: 0.35,
+            roughness: 0.05, metalness: 0.15, transparent: true, opacity: 0.9,
+        });
+
+        /* ── Undercarriage / chassis ── */
+        const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.26, trainLen + 0.3), mat.trainBottom);
+        chassis.position.y = 0.22;
         g.add(chassis);
 
-        // Wheel bogies (front and back)
-        for (const bz of [-trainLen / 2 + 1.5, trainLen / 2 - 1.5]) {
-            const bogieFrame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.12, 1.8), mat.trainBottom);
-            bogieFrame.position.set(0, 0.16, bz);
-            g.add(bogieFrame);
+        /* ── Wheel bogies (front & rear) ── */
+        for (const bz of [-trainLen / 2 + 2.0, trainLen / 2 - 2.0]) {
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.14, 2.3), mat.trainBottom);
+            frame.position.set(0, 0.14, bz);
+            g.add(frame);
             // 4 wheels per bogie
-            for (const wx of [-0.65, 0.65]) {
-                for (const wz of [-0.5, 0.5]) {
-                    const wheel = new THREE.Mesh(geo.wheel, mat.trainWheel);
+            for (const wx of [-0.62, 0.62]) {
+                for (const wz of [-0.6, 0.6]) {
+                    const wheel = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.34, 0.34, 0.2, 18),
+                        mat.trainWheel
+                    );
                     wheel.rotation.z = Math.PI / 2;
                     wheel.position.set(wx, 0.12, bz + wz);
                     g.add(wheel);
+                    // Steel flange (inner lip)
+                    const flange = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.38, 0.38, 0.07, 18),
+                        mat.rail
+                    );
+                    flange.rotation.z = Math.PI / 2;
+                    flange.position.set(wx, 0.12, bz + wz);
+                    g.add(flange);
+                    // Axle
+                    const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.35, 8), mat.trainBottom);
+                    axle.rotation.z = Math.PI / 2;
+                    axle.position.set(0, 0.12, bz + wz);
+                    g.add(axle);
                 }
             }
         }
 
-        // Main body
-        const body = new THREE.Mesh(new THREE.BoxGeometry(1.85, 2.5, trainLen), bodyMat);
-        body.position.y = 1.6;
+        /* ── Main body — stainless steel ── */
+        const body = new THREE.Mesh(new THREE.BoxGeometry(1.88, 2.65, trainLen), bodyMat);
+        body.position.y = 1.68;
         body.castShadow = true;
         body.receiveShadow = true;
         g.add(body);
 
-        // Side panels with texture (left & right)
-        for (const sx of [-0.93, 0.93]) {
-            const sidePanel = new THREE.Mesh(
-                new THREE.PlaneGeometry(trainLen, 2.5),
-                sideMat.clone()
-            );
-            sidePanel.position.set(sx, 1.6, 0);
-            sidePanel.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
-            g.add(sidePanel);
+        /* ── Coloured line stripe (bold band near top) ── */
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.52, trainLen + 0.04), lineMat);
+        stripe.position.y = 2.72;
+        g.add(stripe);
+
+        /* ── Thin chrome trim at top/bottom of stripe ── */
+        for (const dy of [0, 0.52]) {
+            const trim = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.04, trainLen + 0.04),
+                new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.9, roughness: 0.12 }));
+            trim.position.y = 2.72 - 0.26 + dy;
+            g.add(trim);
         }
 
-        // Rounded roof (using multiple segments for curve illusion)
-        const roofW = 1.7;
-        const roofMain = new THREE.Mesh(
-            new THREE.BoxGeometry(roofW, 0.1, trainLen + 0.1),
-            mat.trainRoof
-        );
-        roofMain.position.y = 2.9;
-        g.add(roofMain);
-
-        // Roof bevels
+        /* ── Roof ── */
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.16, trainLen + 0.12), mat.trainRoof);
+        roof.position.y = 3.05;
+        g.add(roof);
+        // Bevelled roof edges
         for (const rx of [-1, 1]) {
-            const bevel = new THREE.Mesh(
-                new THREE.BoxGeometry(0.2, 0.08, trainLen + 0.1),
-                mat.trainRoof
-            );
-            bevel.position.set(rx * 0.85, 2.86, 0);
-            bevel.rotation.z = rx * 0.25;
-            g.add(bevel);
+            const bev = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, trainLen + 0.12), mat.trainRoof);
+            bev.position.set(rx * 0.89, 3.01, 0);
+            bev.rotation.z = rx * 0.22;
+            g.add(bev);
         }
+        // AC units on roof
+        for (const az of [-trainLen * 0.28, trainLen * 0.28]) {
+            const ac = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.16, 2.0), mat.trainRoof);
+            ac.position.set(0, 3.13, az);
+            g.add(ac);
+        }
+        // Pantograph base
+        const panBase = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.22, 0.55), mat.wire);
+        panBase.position.set(0, 3.14, 0);
+        g.add(panBase);
 
-        // AC unit on roof
-        const ac = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.15, 2), mat.trainRoof);
-        ac.position.set(0, 3.0, 0);
-        g.add(ac);
-
-        // Windows (recessed look)
-        const winSpacing = 1.6;
-        const winCount = Math.floor(trainLen / winSpacing) - 1;
+        /* ── Windows & doors ── */
+        const winSpacing = 1.65;
+        const winCount = Math.max(2, Math.floor((trainLen - 2.6) / winSpacing));
+        const winStartZ = -(winCount - 1) * winSpacing * 0.5;
         for (let i = 0; i < winCount; i++) {
-            const wz = -trainLen / 2 + 1.3 + i * winSpacing;
+            const wz = winStartZ + i * winSpacing;
             const isDoor = (i === Math.floor(winCount / 3) || i === Math.floor(winCount * 2 / 3));
-
-            for (const sx of [-0.935, 0.935]) {
+            for (const sx of [-0.945, 0.945]) {
                 if (isDoor) {
-                    // Door
-                    const door = new THREE.Mesh(
-                        new THREE.PlaneGeometry(0.7, 2.0),
-                        mat.trainDoor
-                    );
-                    door.position.set(sx, 1.35, wz);
-                    door.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
-                    g.add(door);
-                    // Door window
-                    const dw = new THREE.Mesh(
-                        new THREE.PlaneGeometry(0.45, 0.6),
-                        mat.trainWindow
-                    );
-                    dw.position.set(sx * 1.001, 1.9, wz);
+                    // Door rubber seal
+                    const sealMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.95 });
+                    const sealV = new THREE.Mesh(new THREE.BoxGeometry(0.015, 2.1, 0.05), sealMat);
+                    sealV.position.set(sx, 1.55, wz - 0.38);
+                    g.add(sealV);
+                    // Door upper window
+                    const dw = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.72), winMat);
+                    dw.position.set(sx * 1.001, 2.22, wz);
                     dw.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
                     g.add(dw);
+                    // Door lower panel
+                    const dp = new THREE.Mesh(new THREE.PlaneGeometry(0.68, 1.26), bodyMat);
+                    dp.position.set(sx * 1.001, 1.4, wz);
+                    dp.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
+                    g.add(dp);
                 } else {
-                    // Window
-                    const win = new THREE.Mesh(
-                        new THREE.PlaneGeometry(0.9, 0.65),
-                        mat.trainWindow
-                    );
-                    win.position.set(sx * 1.001, 2.0, wz);
+                    // Recessed window
+                    const win = new THREE.Mesh(new THREE.PlaneGeometry(1.08, 0.72), winMat);
+                    win.position.set(sx * 1.001, 2.08, wz);
                     win.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
                     g.add(win);
+                    // Window frame inset
+                    const wf = new THREE.Mesh(
+                        new THREE.BoxGeometry(0.018, 0.78, 1.14),
+                        new THREE.MeshStandardMaterial({ color: 0x888894, metalness: 0.7, roughness: 0.2 })
+                    );
+                    wf.position.set(sx, 2.08, wz);
+                    g.add(wf);
                 }
             }
         }
 
-        // Accent stripe along bottom
-        for (const sx of [-0.94, 0.94]) {
-            const stripe = new THREE.Mesh(
-                new THREE.PlaneGeometry(trainLen - 0.5, 0.08),
-                mat.trainStripe
+        /* ── Yellow safety stripe at door sill ── */
+        const safetyMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.4, metalness: 0.1 });
+        for (const sx of [-0.945, 0.945]) {
+            const saf = new THREE.Mesh(new THREE.PlaneGeometry(trainLen - 0.9, 0.07), safetyMat);
+            saf.position.set(sx * 1.001, 0.43, 0);
+            saf.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
+            g.add(saf);
+        }
+
+        /* ── Front nose (coloured face) ── */
+        const frontBody = new THREE.Mesh(new THREE.BoxGeometry(1.88, 2.65, 0.38), lineMat);
+        frontBody.position.set(0, 1.68, -trainLen / 2 - 0.19);
+        g.add(frontBody);
+
+        // Chrome bumper at bottom of nose
+        const bumper = new THREE.Mesh(
+            new THREE.BoxGeometry(1.88, 0.16, 0.06),
+            new THREE.MeshStandardMaterial({ color: 0xccccdd, metalness: 0.9, roughness: 0.1 })
+        );
+        bumper.position.set(0, 0.36, -trainLen / 2 - 0.36);
+        g.add(bumper);
+
+        // Windshield
+        const wsFace = new THREE.Mesh(new THREE.PlaneGeometry(1.22, 0.92), winMat.clone());
+        wsFace.position.set(0, 2.24, -trainLen / 2 - 0.37);
+        g.add(wsFace);
+
+        // Destination display board
+        const dstMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xeeeeff, emissiveIntensity: 0.3 });
+        const dst = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.22, 0.02), dstMat);
+        dst.position.set(0, 2.82, -trainLen / 2 - 0.37);
+        g.add(dst);
+
+        // Headlights (bright & round)
+        for (const hx of [-0.55, 0.55]) {
+            const hlFace = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.1, 0.1, 0.05, 14),
+                mat.headlight
             );
-            stripe.position.set(sx, 0.55, 0);
-            stripe.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
-            g.add(stripe);
+            hlFace.rotation.x = Math.PI / 2;
+            hlFace.position.set(hx, 0.98, -trainLen / 2 - 0.38);
+            g.add(hlFace);
+            // Actual point light
+            const hlLight = new THREE.PointLight(0xffffee, 1.2, 10);
+            hlLight.position.set(hx, 0.98, -trainLen / 2 - 0.55);
+            g.add(hlLight);
         }
 
-        // Front face
-        const front = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 2.5), bodyMat);
-        front.position.set(0, 1.6, -trainLen / 2 - 0.01);
-        g.add(front);
-
-        // Headlights
-        for (const hx of [-0.5, 0.5]) {
-            const hl = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), mat.headlight);
-            hl.position.set(hx, 1.0, -trainLen / 2 - 0.05);
-            g.add(hl);
+        // Ditch lights (lower pair, white)
+        for (const hx of [-0.32, 0.32]) {
+            const dl = new THREE.Mesh(
+                new THREE.BoxGeometry(0.1, 0.06, 0.02),
+                new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.8 })
+            );
+            dl.position.set(hx, 0.65, -trainLen / 2 - 0.38);
+            g.add(dl);
         }
-        // Front number plate / indicator
-        const plate = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.2, 0.02), mat.trainStripe);
-        plate.position.set(0, 2.4, -trainLen / 2 - 0.02);
-        g.add(plate);
 
-        // Coupling at back
-        const coupling = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.3), mat.trainBottom);
-        coupling.position.set(0, 0.4, trainLen / 2 + 0.1);
-        g.add(coupling);
+        /* ── Rear face + tail lights ── */
+        const rearBody = new THREE.Mesh(new THREE.BoxGeometry(1.88, 2.65, 0.28), bodyMat);
+        rearBody.position.set(0, 1.68, trainLen / 2 + 0.14);
+        g.add(rearBody);
+        for (const hx of [-0.55, 0.55]) {
+            const tail = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.09, 0.09, 0.04, 12),
+                new THREE.MeshStandardMaterial({ color: 0xff0011, emissive: 0xff0011, emissiveIntensity: 1.0 })
+            );
+            tail.rotation.x = Math.PI / 2;
+            tail.position.set(hx, 0.98, trainLen / 2 + 0.25);
+            g.add(tail);
+        }
+
+        /* ── Coupling ── */
+        const coup = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.2, 0.45), mat.trainBottom);
+        coup.position.set(0, 0.46, trainLen / 2 + 0.38);
+        g.add(coup);
 
         g.position.set(LANES[lane], GROUND_Y, z);
         scene.add(g);
@@ -995,9 +1286,9 @@
             type: "train",
             lane,
             z,
-            halfW: 0.92,
-            halfH: 1.5,
-            halfD: trainLen / 2,
+            halfW: 0.95,
+            halfH: 1.55,
+            halfD: trainLen / 2 + 0.2,
         });
     }
 
@@ -1362,6 +1653,7 @@
         state.invulnTimer = 0;
         state.gameOver = false;
         state.paused = false;
+        nextMilestoneIdx = 0;
     }
 
     /* ─────────── collision ─────────── */
@@ -1421,6 +1713,7 @@
                 state.coins++;
                 state.score += pts;
                 sfx.coin();
+                popCoinIcon();
                 spawnSparks(c.mesh.position, 4);
                 showFloatingText(`+${pts}`, c.mesh.position);
             }
@@ -1494,6 +1787,62 @@
         hudPowerup.textContent = text;
         hudPowerup.classList.add("visible");
         setTimeout(() => hudPowerup.classList.remove("visible"), 2000);
+    }
+
+    /* ─────────── coin collect pop on HUD icon ─────────── */
+    const coinIconHUD = document.querySelector(".coin-icon-hud");
+    function popCoinIcon() {
+        if (!coinIconHUD) return;
+        coinIconHUD.classList.remove("pop");
+        void coinIconHUD.offsetWidth; // reflow
+        coinIconHUD.classList.add("pop");
+        setTimeout(() => coinIconHUD.classList.remove("pop"), 250);
+    }
+
+    /* ─────────── gold flash overlay ─────────── */
+    function flashGold() {
+        if (!goldFlash) return;
+        goldFlash.classList.add("active");
+        setTimeout(() => goldFlash.classList.remove("active"), 220);
+    }
+
+    /* ─────────── milestone notification text ─────────── */
+    let milestoneTimeout = null;
+    function showMilestoneText(text) {
+        if (!milestoneNotif) return;
+        clearTimeout(milestoneTimeout);
+        milestoneNotif.classList.remove("active", "fade-out");
+        milestoneNotif.textContent = text;
+        void milestoneNotif.offsetWidth;
+        milestoneNotif.classList.add("active");
+        milestoneTimeout = setTimeout(() => {
+            milestoneNotif.classList.remove("active");
+            milestoneNotif.classList.add("fade-out");
+            setTimeout(() => milestoneNotif.classList.remove("fade-out"), 500);
+        }, 1400);
+    }
+
+    /* ─────────── milestone celebration ─────────── */
+    let nextMilestoneIdx = 0;
+
+    function checkMilestones() {
+        if (nextMilestoneIdx >= MILESTONES.length) return;
+        if (state.score >= MILESTONES[nextMilestoneIdx]) {
+            celebrateMilestone(MILESTONES[nextMilestoneIdx]);
+            nextMilestoneIdx++;
+        }
+    }
+
+    function celebrateMilestone(score) {
+        sfx.milestone();
+        flashGold();
+        if (player) {
+            for (let i = 0; i < 4; i++) spawnSparks(player.position, 14);
+        }
+        const labels = ["NICE!", "AWESOME!", "INCREDIBLE!", "LEGENDARY!", "UNSTOPPABLE!", "DEITY MODE!", "TRANSCENDENT!"];
+        const label = labels[Math.min(nextMilestoneIdx, labels.length - 1)];
+        showMilestoneText(`${label}  ${score.toLocaleString()}`);
+        state.invulnTimer = Math.max(state.invulnTimer, 90);
     }
 
     function updateHUD() {
@@ -1604,10 +1953,14 @@
         pauseScreen.style.display = "none";
         hud.classList.add("visible");
 
+        // Start background music
+        setTimeout(startBGM, 200);
+
         if (!animating) { animating = true; animate(); }
     }
 
     function clearWorld() {
+        stopBGM();
         for (const o of obstacles) scene.remove(o.mesh);
         for (const c of coins) scene.remove(c.mesh);
         for (const p of powerups) scene.remove(p.mesh);
@@ -1631,10 +1984,18 @@
         state.gameOver = true;
         state.running = false;
         hud.classList.remove("visible");
+        stopBGM();
+
+        // Screen shake
+        canvas.classList.remove("shaking");
+        void canvas.offsetWidth;
+        canvas.classList.add("shaking");
+        setTimeout(() => canvas.classList.remove("shaking"), 650);
+
         sfx.hit();
 
         flashOverlay.classList.add("active");
-        setTimeout(() => flashOverlay.classList.remove("active"), 300);
+        setTimeout(() => flashOverlay.classList.remove("active"), 380);
 
         let isNew = false;
         if (state.score > state.highScore) {
@@ -1648,17 +2009,19 @@
         finalBest.textContent = state.highScore.toLocaleString();
         newBestBadge.style.display = isNew ? "block" : "none";
 
-        setTimeout(() => { gameOverScreen.style.display = "flex"; }, 600);
+        setTimeout(() => { gameOverScreen.style.display = "flex"; }, 700);
     }
 
     function togglePause() {
         if (state.gameOver) return;
         state.paused = !state.paused;
         pauseScreen.style.display = state.paused ? "flex" : "none";
+        if (state.paused) { stopBGM(); } else if (!muted) { startBGM(); }
     }
 
     function goHome() {
         clearWorld();
+        stopBGM();
         state.running = false;
         state.gameOver = false;
         gameOverScreen.style.display = "none";
@@ -1727,19 +2090,20 @@
         }
         if (state.invulnTimer > 0) state.invulnTimer--;
 
-        // Dust particles while running (every few frames)
-        if (state.frame % 4 === 0 && !state.jumping) {
+        // Dust particles while running (throttled — every 10 frames to reduce GC pressure)
+        if (state.frame % 10 === 0 && !state.jumping) {
             spawnDust(player.position, 1);
         }
 
         // Animate character
         animatePlayer(state.frame);
 
-        // Animate coins (spin + bob)
+        // Animate coins (spin + bob) — only within visible range to avoid iterating entire array
+        const pz = player.position.z;
         for (const c of coins) {
-            if (!c.collected) {
+            if (!c.collected && Math.abs(c.mesh.position.z - pz) < COIN_ANIM_RANGE) {
                 c.mesh.rotation.y += COIN_SPIN;
-                c.mesh.position.y = c.mesh.position.y + Math.sin(state.frame * 0.05 + c.z) * 0.002;
+                c.mesh.position.y += Math.sin(state.frame * 0.05 + c.z) * 0.002;
             }
         }
 
@@ -1762,6 +2126,7 @@
         manageGround();
         collectItems();
         updateParticles();
+        checkMilestones();
 
         // Collision
         if (state.invulnTimer <= 0 && checkCollisions()) {
@@ -1770,39 +2135,42 @@
             return;
         }
 
-        if (state.frame % 60 === 0) cleanBehind();
+        if (state.frame % 30 === 0) cleanBehind(); // twice as often keeps scene lean
 
         updateFloatingTexts();
 
-        // Camera follow (smooth with slight tilt)
+        // Camera follow (smooth)
         const camTargetZ = player.position.z + CAM_Z;
         const camTargetX = player.position.x * 0.35;
         camera.position.z = lerp(camera.position.z, camTargetZ, 0.12);
         camera.position.x = lerp(camera.position.x, camTargetX, 0.08);
         camera.position.y = lerp(camera.position.y, CAM_Y + Math.abs(player.position.x) * 0.08, 0.06);
-        camera.lookAt(
-            player.position.x * 0.25,
-            CAM_LOOKAT_Y,
-            player.position.z - 12
-        );
+        camera.lookAt(player.position.x * 0.25, CAM_LOOKAT_Y, player.position.z - 12);
 
-        // Player light follows
+        // Player light follows every frame (cheap position set)
         playerLight.position.set(player.position.x, 3, player.position.z + 2);
 
-        // Directional light follows
-        dirLight.position.set(player.position.x + 8, 18, player.position.z + 10);
-        dirLight.target.position.set(player.position.x, 0, player.position.z - 5);
-        dirLight.target.updateMatrixWorld();
+        // Directional light + shadow map — update every N frames only
+        if (state.frame % SHADOW_UPDATE_INTERVAL === 0) {
+            dirLight.position.set(player.position.x + 8, 18, player.position.z + 10);
+            dirLight.target.position.set(player.position.x, 0, player.position.z - 5);
+            dirLight.target.updateMatrixWorld();
+            renderer.shadowMap.needsUpdate = true;
+        }
 
-        // Dynamic fog color shift based on speed
-        const speedFactor = (state.speed - RUN_SPEED) / (MAX_SPEED - RUN_SPEED);
-        const fogR = 0.05 + speedFactor * 0.03;
-        const fogG = 0.03 + speedFactor * 0.01;
-        const fogB = 0.12 + speedFactor * 0.03;
-        scene.background.setRGB(fogR, fogG, fogB);
-        scene.fog.color.setRGB(fogR, fogG, fogB);
+        // Fog colour shift — throttled to every 6 frames (imperceptible)
+        if (state.frame % 6 === 0) {
+            const speedFactor = (state.speed - RUN_SPEED) / (MAX_SPEED - RUN_SPEED);
+            const fogR = 0.05 + speedFactor * 0.03;
+            const fogG = 0.03 + speedFactor * 0.01;
+            const fogB = 0.12 + speedFactor * 0.03;
+            scene.background.setRGB(fogR, fogG, fogB);
+            scene.fog.color.setRGB(fogR, fogG, fogB);
+        }
 
-        updateHUD();
+        // HUD DOM updates — every 2 frames is unnoticeable and halves layout work
+        if (state.frame % 2 === 0) updateHUD();
+
         renderer.render(scene, camera);
     }
 
@@ -1822,6 +2190,7 @@
         muted = !muted;
         btnMute.textContent = muted ? "🔇" : "🔊";
         if (masterGain) masterGain.gain.value = muted ? 0 : 0.35;
+        if (muted) { stopBGM(); } else if (state.running && !state.paused && !state.gameOver) { startBGM(); }
     });
 
     window.addEventListener("resize", () => {
