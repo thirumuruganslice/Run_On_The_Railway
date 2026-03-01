@@ -18,6 +18,15 @@
     var nextSceneryZ = -15;
     var nextSideTrainZ = -25;
 
+    /* Check if any building is near a given Z (avoids overlap) */
+    function isBuildingNearZ(z, margin) {
+        var buildings = GAME.Buildings ? GAME.Buildings.buildings : [];
+        for (var i = 0; i < buildings.length; i++) {
+            if (Math.abs(buildings[i].z - z) < margin) return true;
+        }
+        return false;
+    }
+
     function spawnLampPost(z, side) {
         var g = new THREE.Group();
         var pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 4.5, 8), mat.lampPost);
@@ -31,7 +40,7 @@
         var lamp = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.3), mat.lampGlow);
         lamp.position.set(side * -0.9, 4.3, 0);
         g.add(lamp);
-        g.position.set(side * (C.GROUND_W / 2 - 2.5), 0, z);
+        g.position.set(side * (C.LANE_WIDTH * 1.5 + 4.2), 0, z);
         scene.add(g);
         sceneryObjs.push({ mesh: g, z: z });
     }
@@ -72,7 +81,7 @@
             bar.position.y = barYs[yi];
             g.add(bar);
         }
-        g.position.set(side * (C.GROUND_W / 2 - 1), 0, z);
+        g.position.set(side * (C.LANE_WIDTH * 1.5 + 5.0), 0, z);
         scene.add(g);
         sceneryObjs.push({ mesh: g, z: z });
     }
@@ -165,30 +174,35 @@
         var archMat = archMats[archIdx];
         var archTrimMat = mat.archTrim;
 
+        var pillarX = C.LANE_WIDTH * 1.5 + 5.5; /* pillars on sidewalk edge, clear of buildings */
+        var pillarH = 13;                        /* tall pillars */
+        var beamY = 12.5;                        /* high overhead beam */
+        var topY = 13.0;
+
         var sides = [-1, 1];
         for (var si = 0; si < sides.length; si++) {
             var sx = sides[si];
-            var pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 8, 8), archMat);
-            pillar.position.set(sx * (C.GROUND_W / 2 - 2.5), 4.0, 0);
+            var pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.18, pillarH, 8), archMat);
+            pillar.position.set(sx * pillarX, pillarH / 2, 0);
             pillar.castShadow = true;
             g.add(pillar);
-            var base = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.3, 0.7), archMat);
-            base.position.set(sx * (C.GROUND_W / 2 - 2.5), 0.15, 0);
+            var base = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.25, 0.55), archMat);
+            base.position.set(sx * pillarX, 0.12, 0);
             g.add(base);
         }
 
-        var beam = new THREE.Mesh(new THREE.BoxGeometry(C.GROUND_W - 3, 0.45, 0.6), archMat);
-        beam.position.set(0, 7.5, 0);
+        var beam = new THREE.Mesh(new THREE.BoxGeometry(pillarX * 2 + 0.5, 0.3, 0.4), archMat);
+        beam.position.set(0, beamY, 0);
         beam.castShadow = true;
         g.add(beam);
 
-        var topBeam = new THREE.Mesh(new THREE.BoxGeometry(C.GROUND_W - 1.5, 0.2, 0.8), archMat);
-        topBeam.position.set(0, 8.0, 0);
+        var topBeam = new THREE.Mesh(new THREE.BoxGeometry(pillarX * 2 + 1.0, 0.15, 0.55), archMat);
+        topBeam.position.set(0, topY, 0);
         g.add(topBeam);
 
-        var trimYs = [7.25, 7.75];
+        var trimYs = [beamY - 0.25, beamY + 0.25];
         for (var ti = 0; ti < trimYs.length; ti++) {
-            var trim = new THREE.Mesh(new THREE.BoxGeometry(C.GROUND_W - 2.5, 0.06, 0.65), archTrimMat);
+            var trim = new THREE.Mesh(new THREE.BoxGeometry(pillarX * 2, 0.04, 0.45), archTrimMat);
             trim.position.set(0, trimYs[ti], 0);
             g.add(trim);
         }
@@ -196,19 +210,19 @@
         var lanternXs = [-3.5, 0, 3.5];
         for (var li = 0; li < lanternXs.length; li++) {
             var lx = lanternXs[li];
-            var lantern = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.55, 0.35), mat.lanternGlow);
-            lantern.position.set(lx, 6.9, 0);
+            var lantern = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.45, 0.3), mat.lanternGlow);
+            lantern.position.set(lx, beamY - 0.5, 0);
             g.add(lantern);
-            var glow = new THREE.Mesh(new THREE.SphereGeometry(0.15, 6, 4), mat.lanternGlowSphere);
-            glow.position.set(lx, 6.6, 0);
+            var glow = new THREE.Mesh(new THREE.SphereGeometry(0.12, 6, 4), mat.lanternGlowSphere);
+            glow.position.set(lx, beamY - 0.8, 0);
             g.add(glow);
         }
 
         var bannerMat = archBannerMats[archIdx] || archBannerMats[0];
-        for (var si = 0; si < sides.length; si++) {
-            var sx = sides[si];
-            var banner = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 2.5), bannerMat);
-            banner.position.set(sx * (C.GROUND_W / 2 - 2.5), 5.5, 0.35);
+        for (var si2 = 0; si2 < sides.length; si2++) {
+            var sx2 = sides[si2];
+            var banner = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 2.2), bannerMat);
+            banner.position.set(sx2 * pillarX, beamY - 2.5, 0.3);
             g.add(banner);
         }
 
@@ -222,13 +236,14 @@
         var ahead = player ? player.position.z - C.SPAWN_DIST - 20 : -200;
         while (nextSceneryZ > ahead) {
             var r = Math.random();
-            if (r < 0.18) {
+            var hasBldg = isBuildingNearZ(nextSceneryZ, 10);
+            if (r < 0.18 && !hasBldg) {
                 spawnLampPost(nextSceneryZ, Math.random() < 0.5 ? -1 : 1);
             } else if (r < 0.3) {
                 spawnSignalLight(nextSceneryZ);
-            } else if (r < 0.42) {
+            } else if (r < 0.42 && !hasBldg) {
                 spawnFenceSegment(nextSceneryZ, Math.random() < 0.5 ? -1 : 1);
-            } else if (r < 0.55) {
+            } else if (r < 0.55 && !hasBldg) {
                 spawnDecoArch(nextSceneryZ);
             }
             nextSceneryZ -= H.rnd(12, 22);

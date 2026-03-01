@@ -29,7 +29,7 @@
         var buildMat = mat.buildBase.clone(); buildMat.map = buildTex;
 
         var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), buildMat);
-        mesh.position.set(side * (C.LANE_WIDTH * 1.5 + 4.5 + w / 2 + H.rnd(0, 2)), h / 2, z);
+        mesh.position.set(side * (C.LANE_WIDTH * 1.5 + 6.5 + w / 2 + H.rnd(0, 2)), h / 2, z);
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         scene.add(mesh);

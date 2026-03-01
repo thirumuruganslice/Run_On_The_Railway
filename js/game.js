@@ -37,12 +37,13 @@
             if (obs.type === "train") {
                 if (py < 3.4) return true;
             } else if (obs.type === "upperBarrier") {
-                var barY = obs.yCenter || 1.6;
+                var barY = obs.yCenter || 2.3;
                 if (py + pH > barY - obs.halfH && py < barY + obs.halfH) return true;
             } else if (obs.type === "lowBarrier") {
                 if (py < obs.halfH * 2 + 0.3) return true;
             } else if (obs.type === "barrier") {
-                if (py < 2.0) return true;
+                /* Striped sign board — player must jump above 1.5 to clear */
+                if (py < 1.5) return true;
             }
         }
         return false;
@@ -462,11 +463,22 @@
             GAME.Buildings.spawnBuilding(z);
             if (Math.random() < 0.7) GAME.Buildings.spawnBuilding(z + H.rnd(-2, 2));
         }
+        /* Spawn lamp posts only where no buildings exist nearby */
+        var bldgs = GAME.Buildings.buildings;
         for (var z2 = -5; z2 > -200; z2 -= 15) {
-            GAME.Scenery.spawnLampPost(z2, Math.random() < 0.5 ? -1 : 1);
+            var lampClear = true;
+            for (var bi = 0; bi < bldgs.length; bi++) {
+                if (Math.abs(bldgs[bi].z - z2) < 10) { lampClear = false; break; }
+            }
+            if (lampClear) GAME.Scenery.spawnLampPost(z2, Math.random() < 0.5 ? -1 : 1);
         }
+        /* Spawn arches only where no buildings exist nearby */
         for (var z3 = -20; z3 > -180; z3 -= H.rnd(30, 50)) {
-            GAME.Scenery.spawnDecoArch(z3);
+            var archClear = true;
+            for (var bi2 = 0; bi2 < bldgs.length; bi2++) {
+                if (Math.abs(bldgs[bi2].z - z3) < 12) { archClear = false; break; }
+            }
+            if (archClear) GAME.Scenery.spawnDecoArch(z3);
         }
         for (var z4 = -8; z4 > -180; z4 -= H.rnd(14, 24)) {
             var side = Math.random() < 0.5 ? -1 : 1;

@@ -14,45 +14,58 @@
 
     var obstacles = [];
 
-    /* ── Arrow mesh builder (flat arrow on obstacle face) ── */
+    /* ── Cached materials for sign board stripes ── */
+    var signRedMat = new THREE.MeshStandardMaterial({ color: 0xCC2020, roughness: 0.35, metalness: 0.05, emissive: 0x881010, emissiveIntensity: 0.15 });
+    var signWhiteMat = new THREE.MeshStandardMaterial({ color: 0xF8F8F0, roughness: 0.3, metalness: 0.05 });
+    var signBlueMat = new THREE.MeshStandardMaterial({ color: 0x2A8A9A, roughness: 0.25, metalness: 0.3, emissive: 0x1A6A7A, emissiveIntensity: 0.4 });
+
+    /* ── Build vertical-stripe sign face (like reference image) ── */
+    function createSignStripes(boardW, boardH, stripeCount) {
+        var g = new THREE.Group();
+        stripeCount = stripeCount || 7;
+        var margin = 0.06;
+        var innerW = boardW - margin * 2;
+        var innerH = boardH - margin * 2;
+        var stripeW = innerW / stripeCount;
+
+        for (var i = 0; i < stripeCount; i++) {
+            var isRed = i % 2 === 0;
+            var sMat = isRed ? signRedMat : signWhiteMat;
+            var stripe = new THREE.Mesh(
+                new THREE.BoxGeometry(stripeW - 0.01, innerH, 0.015),
+                sMat
+            );
+            stripe.position.set(
+                -innerW / 2 + stripeW / 2 + i * stripeW,
+                0,
+                0
+            );
+            g.add(stripe);
+        }
+
+        g.userData.isArrowIndicator = true;
+        g.userData._baseScale = 1.0;
+        return g;
+    }
+
+    /* Single chevron arrow for legacy (kept for lowBarrier) */
     function createSurfaceArrow(direction, scale) {
         var s = scale || 1.0;
         var g = new THREE.Group();
-
-        var arrowShape = new THREE.Shape();
-        arrowShape.moveTo(0, 0.48 * s);
-        arrowShape.lineTo(-0.42 * s, 0.0);
-        arrowShape.lineTo(-0.18 * s, 0.0);
-        arrowShape.lineTo(-0.18 * s, -0.44 * s);
-        arrowShape.lineTo(0.18 * s, -0.44 * s);
-        arrowShape.lineTo(0.18 * s, 0.0);
-        arrowShape.lineTo(0.42 * s, 0.0);
-        arrowShape.lineTo(0, 0.48 * s);
-
-        var arrowMat = new THREE.MeshBasicMaterial({ color: 0xff1111, side: THREE.DoubleSide, depthTest: true });
-        var arrowGeo = new THREE.ShapeGeometry(arrowShape);
-        var arrowMesh = new THREE.Mesh(arrowGeo, arrowMat);
-        if (direction === "down") arrowMesh.rotation.z = Math.PI;
-        g.add(arrowMesh);
-
-        var outlineShape = new THREE.Shape();
-        var os = s * 1.15;
-        outlineShape.moveTo(0, 0.48 * os);
-        outlineShape.lineTo(-0.42 * os, 0.0);
-        outlineShape.lineTo(-0.18 * os, 0.0);
-        outlineShape.lineTo(-0.18 * os, -0.44 * os);
-        outlineShape.lineTo(0.18 * os, -0.44 * os);
-        outlineShape.lineTo(0.18 * os, 0.0);
-        outlineShape.lineTo(0.42 * os, 0.0);
-        outlineShape.lineTo(0, 0.48 * os);
-
-        var outlineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-        var outlineGeo = new THREE.ShapeGeometry(outlineShape);
-        var outlineMesh = new THREE.Mesh(outlineGeo, outlineMat);
-        if (direction === "down") outlineMesh.rotation.z = Math.PI;
-        outlineMesh.position.z = -0.005;
-        g.add(outlineMesh);
-
+        var shape = new THREE.Shape();
+        var hw = 0.38 * s, hh = 0.42 * s, t = 0.12 * s;
+        if (direction === "up") {
+            shape.moveTo(-hw, -hh); shape.lineTo(-hw + t, -hh);
+            shape.lineTo(0, hh - t * 0.5); shape.lineTo(hw - t, -hh);
+            shape.lineTo(hw, -hh); shape.lineTo(0, hh); shape.lineTo(-hw, -hh);
+        } else {
+            shape.moveTo(-hw, hh); shape.lineTo(-hw + t, hh);
+            shape.lineTo(0, -hh + t * 0.5); shape.lineTo(hw - t, hh);
+            shape.lineTo(hw, hh); shape.lineTo(0, -hh); shape.lineTo(-hw, hh);
+        }
+        var geo = new THREE.ShapeGeometry(shape);
+        var mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xff1111, side: THREE.DoubleSide }));
+        g.add(mesh);
         g.userData.isArrowIndicator = true;
         g.userData._baseScale = 1.0;
         return g;
@@ -410,59 +423,81 @@
         });
     }
 
-    /* ── Spawn Barrier (jump over) ── */
+    /* ── Spawn Barrier (jump over) — red/white striped sign board ── */
     function spawnBarrier(lane, z) {
         var g = new THREE.Group();
-        var barrierW = 2.0;
-        var barrierH = 2.4;
+        var boardW = 2.2;
+        var boardH = 1.6;
+        var boardD = 0.12;
+        var boardY = boardH / 2 + 0.05;
 
-        [-barrierW / 2, barrierW / 2].forEach(function (px) {
-            var post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, barrierH, 8), mat.barrier);
-            post.position.set(px, barrierH / 2, 0);
+        /* ─ Two side posts ─ */
+        [-boardW / 2 - 0.04, boardW / 2 + 0.04].forEach(function (px) {
+            var post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, boardH + 0.2, 8), mat.barrier);
+            post.position.set(px, boardY, 0);
             post.castShadow = true;
             g.add(post);
-            var capMesh = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), mat.barrierWarn);
-            capMesh.position.set(px, barrierH + 0.05, 0);
-            g.add(capMesh);
-            var base = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.24, 0.1, 8), mat.barrierStripe);
-            base.position.set(px, 0.05, 0);
+            /* Base plate */
+            var base = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.08, 8), mat.chrome);
+            base.position.set(px, 0.04, 0);
             g.add(base);
         });
 
-        var barThick = new THREE.CylinderGeometry(0.07, 0.07, barrierW, 6);
-        for (var bi = 0; bi < 5; bi++) {
-            var bar = new THREE.Mesh(barThick, bi % 2 === 0 ? mat.barrier : mat.barrierStripe);
-            bar.rotation.z = Math.PI / 2;
-            bar.position.set(0, 0.35 + bi * 0.45, 0);
-            bar.castShadow = true;
-            g.add(bar);
-        }
+        /* ─ Main sign board background ─ */
+        var boardBg = new THREE.Mesh(new THREE.BoxGeometry(boardW, boardH, boardD), mat.barrier);
+        boardBg.position.set(0, boardY, 0);
+        boardBg.castShadow = true;
+        boardBg.receiveShadow = true;
+        g.add(boardBg);
 
-        var warnPanel = new THREE.Mesh(new THREE.BoxGeometry(barrierW - 0.2, 0.5, 0.06), mat.warnPanel);
-        warnPanel.position.set(0, 1.5, 0.08);
-        g.add(warnPanel);
+        /* ─ Red & white vertical stripes (reference look) ─ */
+        var stripes = createSignStripes(boardW, boardH, 7);
+        stripes.position.set(0, boardY, boardD / 2 + 0.008);
+        g.add(stripes);
 
-        for (var si = 0; si < 6; si++) {
-            var strp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.46, 0.02), mat.hazardYellow);
-            strp.position.set(-0.6 + si * 0.24, 1.5, 0.12);
-            strp.rotation.z = 0.35;
-            g.add(strp);
-        }
+        /* ─ Chrome frame border ─ */
+        var ft = 0.05;
+        /* Top */
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(boardW + 0.1, ft, boardD + 0.04), mat.chrome)
+            .translateY(boardY + boardH / 2 + ft / 2));
+        /* Bottom */
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(boardW + 0.1, ft, boardD + 0.04), mat.chrome)
+            .translateY(boardY - boardH / 2 - ft / 2));
+        /* Sides */
+        [-boardW / 2, boardW / 2].forEach(function (px) {
+            var side = new THREE.Mesh(new THREE.BoxGeometry(ft, boardH + ft * 2, boardD + 0.04), mat.chrome);
+            side.position.set(px, boardY, 0);
+            g.add(side);
+        });
 
-        var upArrow = createSurfaceArrow("up", 0.5);
-        upArrow.position.set(0, 1.5, 0.14);
-        g.add(upArrow);
+        /* ─ Blue/teal spherical lights on top corners (reference) ─ */
+        [-boardW / 2 + 0.01, boardW / 2 - 0.01].forEach(function (lx) {
+            /* Light mount bracket */
+            var mount = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.12, 6), mat.chrome);
+            mount.position.set(lx, boardY + boardH / 2 + ft + 0.06, 0);
+            g.add(mount);
+            /* Blue sphere light */
+            var bulb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), signBlueMat);
+            bulb.position.set(lx, boardY + boardH / 2 + ft + 0.2, 0);
+            g.add(bulb);
+            /* Bright highlight core */
+            var core = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6),
+                new THREE.MeshStandardMaterial({ color: 0x88EEEE, emissive: 0x55CCCC, emissiveIntensity: 1.0 }));
+            core.position.set(lx, boardY + boardH / 2 + ft + 0.2, -0.06);
+            g.add(core);
+        });
 
-        var warnLight = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), mat.warnRed);
-        warnLight.position.set(0, barrierH + 0.2, 0);
-        g.add(warnLight);
+        /* ─ Back face ─ */
+        var back = new THREE.Mesh(new THREE.BoxGeometry(boardW - 0.06, boardH - 0.06, 0.02), mat.concrete);
+        back.position.set(0, boardY, -boardD / 2 - 0.01);
+        g.add(back);
 
         g.position.set(C.LANES[lane], C.GROUND_Y, z);
         scene.add(g);
 
         obstacles.push({
             mesh: g, type: "barrier", lane: lane, z: z,
-            halfW: 1.0, halfH: 1.2, halfD: 0.25,
+            halfW: 1.1, halfH: 0.8, halfD: 0.2,
             canRollUnder: false, canJumpOver: true,
         });
     }
@@ -470,7 +505,7 @@
     /* ── Spawn Low Barrier (jump over) ── */
     function spawnLowBarrier(lane, z) {
         var g = new THREE.Group();
-        var barW = 2.2, barH = 0.75, barD = 0.6;
+        var barW = 2.2, barH = 1.0, barD = 0.6;
 
         var barGeo = new THREE.BoxGeometry(barW, barH, barD, 2, 2, 2);
         var barV = barGeo.attributes.position;
@@ -509,56 +544,95 @@
 
         obstacles.push({
             mesh: g, type: "lowBarrier", lane: lane, z: z,
-            halfW: 1.1, halfH: 0.4, halfD: 0.3,
+            halfW: 1.1, halfH: 0.5, halfD: 0.3,
             canRollUnder: false, canJumpOver: true,
         });
     }
 
-    /* ── Spawn Upper Barrier (roll under) ── */
+    /* ── Spawn Upper Barrier (roll under) — elevated striped sign board ── */
     function spawnUpperBarrier(lane, z) {
         var g = new THREE.Group();
-        var ubW = 2.2;
+        var ubW = 2.5;
+        var postH = 4.8;
+        var boardBottom = 1.6;            /* gap below for rolling (player rolls at 0.6) */
+        var boardH = postH - boardBottom; /* 3.2 — sign board */
+        var boardCenter = boardBottom + boardH / 2;  /* 2.3 */
+        var boardD = 0.12;
 
-        [-ubW / 2, ubW / 2].forEach(function (px) {
-            var post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.2, 8), mat.barrier);
-            post.position.set(px, 1.6, 0);
+        /* ─ Tall steel posts ─ */
+        [-ubW / 2 - 0.04, ubW / 2 + 0.04].forEach(function (px) {
+            /* Main post */
+            var post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, postH, 8), mat.barrier);
+            post.position.set(px, postH / 2, 0);
             post.castShadow = true;
             g.add(post);
-            var brace = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.3), mat.barrier);
-            brace.position.set(px * 0.7, 1.0, 0);
-            brace.rotation.z = px > 0 ? -0.4 : 0.4;
+            /* Base plate */
+            var basePlate = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 0.08, 8), mat.chrome);
+            basePlate.position.set(px, 0.04, 0);
+            g.add(basePlate);
+            /* Diagonal brace */
+            var brace = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.0, 6), mat.barrier);
+            brace.position.set(px * 0.72, 0.55, 0);
+            brace.rotation.z = px > 0 ? -0.5 : 0.5;
             g.add(brace);
         });
 
-        var beam = new THREE.Mesh(new THREE.BoxGeometry(ubW, 0.35, 0.5), mat.barrier);
-        beam.position.y = 1.6;
-        beam.castShadow = true;
-        g.add(beam);
+        /* ─ Big sign board mounted high ─ */
+        var boardBg = new THREE.Mesh(new THREE.BoxGeometry(ubW, boardH, boardD), mat.barrier);
+        boardBg.position.set(0, boardCenter, 0);
+        boardBg.castShadow = true;
+        g.add(boardBg);
 
-        for (var si = 0; si < 8; si++) {
-            var stripeM = si % 2 === 0 ? mat.ubRedStripe : mat.ubWhiteStripe;
-            var beamStripe = new THREE.Mesh(new THREE.BoxGeometry(ubW / 8, 0.33, 0.02), stripeM);
-            beamStripe.position.set(-ubW / 2 + ubW / 16 + si * (ubW / 8), 1.6, 0.26);
-            g.add(beamStripe);
-        }
+        /* ─ Red & white vertical stripes (reference look) ─ */
+        var stripes = createSignStripes(ubW, boardH, 9);
+        stripes.position.set(0, boardCenter, boardD / 2 + 0.008);
+        g.add(stripes);
 
-        var downArrow = createSurfaceArrow("down", 0.35);
-        downArrow.position.set(0, 1.6, 0.28);
-        g.add(downArrow);
-
-        [-ubW / 2 + 0.15, ubW / 2 - 0.15].forEach(function (px) {
-            var warnLt = new THREE.Mesh(new THREE.SphereGeometry(0.22, 8, 6), mat.warnRedSphere);
-            warnLt.position.set(px, 1.9, 0.2);
-            g.add(warnLt);
+        /* ─ Chrome frame border ─ */
+        var ft = 0.05;
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(ubW + 0.1, ft, boardD + 0.04), mat.chrome)
+            .translateY(boardBottom + boardH + ft / 2));
+        g.add(new THREE.Mesh(new THREE.BoxGeometry(ubW + 0.1, ft, boardD + 0.04), mat.chrome)
+            .translateY(boardBottom - ft / 2));
+        [-ubW / 2, ubW / 2].forEach(function (px) {
+            var side = new THREE.Mesh(new THREE.BoxGeometry(ft, boardH + ft * 2, boardD + 0.04), mat.chrome);
+            side.position.set(px, boardCenter, 0);
+            g.add(side);
         });
+
+        /* ─ Blue/teal spherical lights on top corners (reference) ─ */
+        [-ubW / 2 + 0.01, ubW / 2 - 0.01].forEach(function (lx) {
+            var mount2 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.12, 6), mat.chrome);
+            mount2.position.set(lx, postH + 0.06, 0);
+            g.add(mount2);
+            var bulb2 = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), signBlueMat);
+            bulb2.position.set(lx, postH + 0.22, 0);
+            g.add(bulb2);
+            var core2 = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6),
+                new THREE.MeshStandardMaterial({ color: 0x88EEEE, emissive: 0x55CCCC, emissiveIntensity: 1.0 }));
+            core2.position.set(lx, postH + 0.22, -0.07);
+            g.add(core2);
+        });
+
+        /* ─ Back face ─ */
+        var backUB = new THREE.Mesh(new THREE.BoxGeometry(ubW - 0.06, boardH - 0.06, 0.02), mat.concrete);
+        backUB.position.set(0, boardCenter, -boardD / 2 - 0.01);
+        g.add(backUB);
+
+        /* ─ Reflective bottom edge dots (highlight the gap) ─ */
+        for (var di = 0; di < 10; di++) {
+            var rDot = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 4), mat.headlight);
+            rDot.position.set(-ubW / 2 + 0.15 + di * (ubW - 0.3) / 9, boardBottom - 0.06, boardD / 2);
+            g.add(rDot);
+        }
 
         g.position.set(C.LANES[lane], C.GROUND_Y, z);
         scene.add(g);
 
         obstacles.push({
             mesh: g, type: "upperBarrier", lane: lane, z: z,
-            halfW: 1.1, halfH: 0.25, halfD: 0.25,
-            yCenter: 1.6, canRollUnder: true, canJumpOver: false,
+            halfW: 1.2, halfH: boardH / 2, halfD: 0.2,
+            yCenter: boardCenter, canRollUnder: true, canJumpOver: false,
         });
     }
 

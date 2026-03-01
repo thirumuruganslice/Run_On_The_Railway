@@ -397,9 +397,14 @@ canvas#gameCanvas {
     opacity 0.35s ease,
     transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
-#milestoneNotif.show {
+#milestoneNotif.show,
+#milestoneNotif.active {
   opacity: 1;
   transform: translateX(-50%) translateY(0) scale(1);
+}
+#milestoneNotif.fade-out {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-10px) scale(0.9);
 }
 
 /* ═══════════════════════════════════════════

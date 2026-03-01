@@ -14,6 +14,45 @@
     var nextBuildingZ = -20;
     var nextPowerZ = -80;
 
+    /* Lane status constants */
+    var LANE_SAFE = 0;
+    var LANE_JUMP = 1;
+    var LANE_ROLL = 2;
+    var LANE_BLOCKED = 3;
+
+    /**
+     * Check each lane for obstacles overlapping a Z range.
+     * Returns [status0, status1, status2] for the three lanes.
+     */
+    function getLaneStatus(coinZ, coinSpan) {
+        var obstacles = GAME.Obstacles.obstacles;
+        var status = [LANE_SAFE, LANE_SAFE, LANE_SAFE];
+        var margin = 3.0;
+
+        for (var oi = 0; oi < obstacles.length; oi++) {
+            var obs = obstacles[oi];
+            var coinMin = coinZ - coinSpan;
+            var coinMax = coinZ;
+            var obsMin = obs.z - obs.halfD - margin;
+            var obsMax = obs.z + obs.halfD + margin;
+
+            /* Check Z-range overlap */
+            if (coinMin < obsMax && obsMin < coinMax) {
+                var lane = obs.lane;
+                if (lane < 0 || lane > 2) continue;
+
+                if (obs.type === "train") {
+                    status[lane] = LANE_BLOCKED;
+                } else if ((obs.type === "barrier" || obs.type === "lowBarrier") && status[lane] < LANE_BLOCKED) {
+                    status[lane] = Math.max(status[lane], LANE_JUMP);
+                } else if (obs.type === "upperBarrier" && status[lane] < LANE_BLOCKED) {
+                    status[lane] = Math.max(status[lane], LANE_ROLL);
+                }
+            }
+        }
+        return status;
+    }
+
     function spawnWorld() {
         var player = GAME.Player.getPlayer();
         if (!player) return;
@@ -24,6 +63,7 @@
         var Bld = GAME.Buildings;
         var Scn = GAME.Scenery;
 
+        /* ── Spawn obstacles first ── */
         while (nextObstacleZ > ahead) {
             var laneIdx = H.rndInt(0, 2);
             var r = Math.random();
@@ -41,14 +81,40 @@
             nextObstacleZ -= H.rnd(C.OBS_GAP_MIN, C.OBS_GAP_MAX);
         }
 
+        /* ── Spawn coins (obstacle-aware) ── */
         while (nextCoinZ > ahead) {
-            var cl = H.rndInt(0, 2);
-            if (Math.random() < 0.3) {
-                Col.spawnCoinArc(cl, nextCoinZ);
-            } else {
-                Col.spawnCoinRow(cl, nextCoinZ, H.rndInt(3, 7));
+            var coinCount = H.rndInt(3, 7);
+            var coinSpan = (coinCount - 1) * 1.8;
+
+            /* Determine which lanes are safe/jumpable/rollable/blocked */
+            var status = getLaneStatus(nextCoinZ, coinSpan);
+            var safeLanes = [];
+            var jumpLanes = [];
+            var rollLanes = [];
+
+            for (var li = 0; li < 3; li++) {
+                if (status[li] === LANE_SAFE) safeLanes.push(li);
+                else if (status[li] === LANE_JUMP) jumpLanes.push(li);
+                else if (status[li] === LANE_ROLL) rollLanes.push(li);
             }
-            nextCoinZ -= H.rnd(C.COIN_GAP, C.COIN_GAP * 3);
+
+            if (safeLanes.length > 0) {
+                /* Place coins in a safe lane; sometimes guide via arcs */
+                if (Math.random() < 0.25 && jumpLanes.length > 0) {
+                    Col.spawnCoinArc(H.pick(jumpLanes), nextCoinZ);
+                } else {
+                    Col.spawnCoinRow(H.pick(safeLanes), nextCoinZ, coinCount);
+                }
+            } else if (jumpLanes.length > 0) {
+                /* No safe lane — arc coins over a jumpable barrier */
+                Col.spawnCoinArc(H.pick(jumpLanes), nextCoinZ);
+            } else if (rollLanes.length > 0) {
+                /* Only roll-under lanes available — low coins */
+                Col.spawnCoinRowLow(H.pick(rollLanes), nextCoinZ, coinCount);
+            }
+            /* If all 3 lanes are trains, skip coins entirely */
+
+            nextCoinZ -= H.rnd(C.COIN_GAP * 1.5, C.COIN_GAP * 3.5);
         }
 
         while (nextBuildingZ > ahead) {

@@ -61,14 +61,28 @@
         }
     }
 
-    function spawnCoinArc(lane, z) {
-        for (var i = 0; i < 6; i++) {
-            var t = i / 5;
-            var yOff = Math.sin(t * Math.PI) * 2.5;
+    /* Low coin row — placed under upper barriers to guide rolling */
+    function spawnCoinRowLow(lane, z, count) {
+        count = count || 5;
+        for (var i = 0; i < count; i++) {
             var coinG = createCoinMesh();
-            coinG.position.set(C.LANES[lane], 1.0 + yOff, z - i * 1.8);
+            coinG.position.set(C.LANES[lane], 0.45, z - i * 1.8);
             scene.add(coinG);
-            coins.push({ mesh: coinG, lane: lane, z: z - i * 1.8, collected: false, baseY: 1.0 + yOff });
+            coins.push({ mesh: coinG, lane: lane, z: z - i * 1.8, collected: false, baseY: 0.45 });
+        }
+    }
+
+    /* Arc coins — placed over jumpable barriers to guide jumping.
+       Arc peak matches player jump trajectory (~3.0 from ground). */
+    function spawnCoinArc(lane, z) {
+        var arcCoins = 7;
+        for (var i = 0; i < arcCoins; i++) {
+            var t = i / (arcCoins - 1);
+            var yOff = Math.sin(t * Math.PI) * 1.5;
+            var coinG = createCoinMesh();
+            coinG.position.set(C.LANES[lane], 0.8 + yOff, z - i * 1.6);
+            scene.add(coinG);
+            coins.push({ mesh: coinG, lane: lane, z: z - i * 1.6, collected: false, baseY: 0.8 + yOff });
         }
     }
 
@@ -109,6 +123,7 @@
         coins: coins,
         powerups: powerups,
         spawnCoinRow: spawnCoinRow,
+        spawnCoinRowLow: spawnCoinRowLow,
         spawnCoinArc: spawnCoinArc,
         spawnPowerup: spawnPowerup,
     };
