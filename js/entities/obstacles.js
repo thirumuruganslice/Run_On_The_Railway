@@ -1,5 +1,5 @@
 /* ============================================================
-   Obstacles — Run on the Railway
+   Obstacles — Railway Runner
    Trains, barriers, and obstacle spawning.
    ============================================================ */
 (function () {

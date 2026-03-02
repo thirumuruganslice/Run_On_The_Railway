@@ -1,5 +1,5 @@
 /* ============================================================
-   Game Entry Point — Run on the Railway
+   Game Entry Point — Railway Runner
    Main loop, game flow, collision, collection, event wiring.
    ============================================================ */
 (function () {
@@ -123,21 +123,14 @@
         GAME.Audio.initAudio();
 
         DOM.startScreen.classList.add("transitioning");
-        DOM.charContainer.classList.remove("idle");
-        DOM.charContainer.classList.add("running");
-
-        setTimeout(function () {
-            if (DOM.transitionFlash) DOM.transitionFlash.classList.add("active");
-        }, 700);
 
         setTimeout(function () {
             DOM.startScreen.classList.add("fade-out");
-        }, 900);
+        }, 100);
 
         setTimeout(function () {
-            if (DOM.transitionFlash) DOM.transitionFlash.classList.remove("active");
             startGame();
-        }, 1300);
+        }, 500);
     }
 
     function startGame() {
@@ -254,9 +247,6 @@
         DOM.hud.classList.remove("visible");
 
         DOM.startScreen.classList.remove("transitioning", "fade-out");
-        DOM.charContainer.classList.remove("running");
-        DOM.charContainer.classList.add("idle");
-        if (DOM.transitionFlash) DOM.transitionFlash.classList.remove("active");
 
         DOM.startScreen.style.display = "flex";
         showHighScore();
@@ -504,7 +494,24 @@
     /* ─── Event Listeners ─── */
     GAME.Input.setupInput();
 
-    DOM.btnPlay.addEventListener("click", playTransition);
+    /* Tap anywhere on the overlay to start (except UI buttons) */
+    DOM.startScreen.addEventListener("click", function (e) {
+        if (e.target.closest(".overlay-btn")) return;
+        playTransition();
+    });
+    DOM.startScreen.addEventListener("touchstart", function (e) {
+        if (e.target.closest(".overlay-btn")) return;
+        e.preventDefault();
+        playTransition();
+    }, { passive: false });
+    /* Any key starts the game from title */
+    document.addEventListener("keydown", function (e) {
+        if (DOM.startScreen.style.display !== "none" && !state.running) {
+            var anyPanelOpen = document.querySelector(".panel-overlay[style*='display: flex']") ||
+                document.querySelector(".panel-overlay[style*='display:flex']");
+            if (!anyPanelOpen) playTransition();
+        }
+    });
     DOM.btnRestart.addEventListener("click", startGame);
     DOM.btnHome.addEventListener("click", goHome);
     DOM.btnResume.addEventListener("click", togglePause);
@@ -540,5 +547,4 @@
     /* ─── Initialize ─── */
     showHighScore();
     initTitleScene();
-    DOM.charContainer.classList.add("idle");
 })();

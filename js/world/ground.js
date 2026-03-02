@@ -1,5 +1,5 @@
 /* ============================================================
-   Ground Chunk Builder & Recycler — Run on the Railway
+   Ground Chunk Builder & Recycler — Railway Runner
    Creates detailed railway track ground segments.
    ============================================================ */
 (function () {

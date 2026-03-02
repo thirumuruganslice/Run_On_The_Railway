@@ -1,5 +1,5 @@
 /* ============================================================
-   Player Character — Run on the Railway
+   Player Character — Railway Runner
    Cartoon-proportioned character with run-cycle animation.
    ============================================================ */
 (function () {

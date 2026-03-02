@@ -1,5 +1,5 @@
 /* ============================================================
-   Particle System — Run on the Railway
+   Particle System — Railway Runner
    Dust trails and spark effects with material pooling.
    ============================================================ */
 (function () {

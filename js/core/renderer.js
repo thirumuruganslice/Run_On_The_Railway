@@ -1,5 +1,5 @@
 /* ============================================================
-   Three.js Renderer, Scene, Camera & Lighting — Run on the Railway
+   Three.js Renderer, Scene, Camera & Lighting — Railway Runner
    ============================================================ */
 (function () {
     "use strict";

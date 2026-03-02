@@ -1,5 +1,5 @@
 /* ============================================================
-   World Spawner — Run on the Railway
+   World Spawner — Railway Runner
    Spawns obstacles, coins, buildings, powerups and cleans up
    objects that have passed behind the player.
    ============================================================ */

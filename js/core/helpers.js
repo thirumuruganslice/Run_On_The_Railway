@@ -1,5 +1,5 @@
 /* ============================================================
-   Helper Functions — Run on the Railway
+   Helper Functions — Railway Runner
    ============================================================ */
 (function () {
     "use strict";

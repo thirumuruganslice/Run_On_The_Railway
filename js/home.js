@@ -1,5 +1,5 @@
 /* ============================================================
-   Run on the Railway — Home Screen Controller
+   Railway Runner — Home Screen Controller
    Handles: Shop, Settings, Leaderboard, Missions, Panels
    ============================================================ */
 "use strict";

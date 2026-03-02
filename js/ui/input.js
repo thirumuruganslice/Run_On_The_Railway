@@ -1,5 +1,5 @@
 /* ============================================================
-   Input — Run on the Railway
+   Input — Railway Runner
    Keyboard and touch input handling.
    ============================================================ */
 (function () {

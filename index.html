@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Run On The Railway — Endless Runner</title>
+    <title>Railway Runner — Endless Runner</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;700;800;900&display=swap"
         rel="stylesheet">
@@ -40,71 +40,14 @@
         <div id="hudPowerup" class="hud-powerup"></div>
     </div>
 
-    <!-- ═══════════════ HOME SCREEN ═══════════════ -->
-    <div id="startScreen" class="screen home-screen">
-
-        <!-- Animated cityscape background -->
-        <div class="bg-scene">
-            <div class="bg-sky">
-                <div class="sky-stars"></div>
-            </div>
-            <!-- Far buildings layer (slower parallax) -->
-            <div class="bg-buildings-far">
-                <div class="building-far bf1"></div>
-                <div class="building-far bf2"></div>
-                <div class="building-far bf3"></div>
-                <div class="building-far bf4"></div>
-                <div class="building-far bf5"></div>
-                <div class="building-far bf6"></div>
-                <div class="building-far bf7"></div>
-                <div class="building-far bf8"></div>
-                <div class="building-far bf9"></div>
-                <div class="building-far bf10"></div>
-            </div>
-            <!-- Near buildings layer (faster parallax) -->
-            <div class="bg-buildings-near">
-                <div class="building-near bn1"></div>
-                <div class="building-near bn2"></div>
-                <div class="building-near bn3"></div>
-                <div class="building-near bn4"></div>
-                <div class="building-near bn5"></div>
-                <div class="building-near bn6"></div>
-                <div class="building-near bn7"></div>
-                <div class="building-near bn8"></div>
-            </div>
-            <!-- Ground with railway tracks -->
-            <div class="bg-ground">
-                <div class="ground-grass"></div>
-                <div class="ground-track">
-                    <div class="rail r1"></div>
-                    <div class="rail r2"></div>
-                    <div class="rail r3"></div>
-                    <div class="sleeper-strip"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Floating particles -->
-        <div class="home-particles">
-            <div class="h-particle p1"></div>
-            <div class="h-particle p2"></div>
-            <div class="h-particle p3"></div>
-            <div class="h-particle p4"></div>
-            <div class="h-particle p5"></div>
-            <div class="h-particle p6"></div>
-            <div class="h-particle p7"></div>
-            <div class="h-particle p8"></div>
-        </div>
-
-        <!-- Transition flash overlay -->
-        <div id="homeTransitionFlash" class="home-transition-flash"></div>
-
-        <!-- ── UI Overlay ── -->
+    <!-- ═══════════════ TAP TO PLAY OVERLAY ═══════════════ -->
+    <div id="startScreen" class="screen tap-overlay">
+        <div class="tap-overlay-bg"></div>
         <div class="home-ui">
 
             <!-- Top bar -->
             <header class="home-topbar">
-                <button class="topbar-btn" id="btnSettings" aria-label="Settings">
+                <button class="topbar-btn overlay-btn" id="btnSettings" aria-label="Settings">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="3" />
@@ -112,11 +55,11 @@
                             d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
                     </svg>
                 </button>
-                <div class="home-coin-pill">
+                <div class="home-coin-pill overlay-btn">
                     <span class="coin-emoji">🪙</span>
                     <span id="homeTotalCoins" class="home-coin-count">0</span>
                 </div>
-                <button class="topbar-btn" id="btnMission" aria-label="Missions">
+                <button class="topbar-btn overlay-btn" id="btnMission" aria-label="Missions">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                         stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
@@ -129,73 +72,34 @@
             <!-- Logo -->
             <div class="home-logo-area">
                 <div class="logo-graffiti">
-                    <span class="logo-sub">RUN ON THE</span>
-                    <span class="logo-main">RAILWAY</span>
+                    <span class="logo-sub">RAILWAY</span>
+                    <span class="logo-main">RUNNER</span>
                 </div>
             </div>
 
-            <!-- Center: Character + CTA  -->
+            <!-- Center: Tap to Play -->
             <div class="home-center">
-                <div id="characterContainer" class="character-container">
-                    <!-- CSS Surfer Character -->
-                    <div class="surfer" id="surferChar">
-                        <div class="surfer-head">
-                            <div class="surfer-cap"></div>
-                            <div class="surfer-hair"></div>
-                            <div class="surfer-face">
-                                <div class="surfer-eye left"></div>
-                                <div class="surfer-eye right"></div>
-                                <div class="surfer-mouth"></div>
-                            </div>
-                        </div>
-                        <div class="surfer-body">
-                            <div class="surfer-hoodie">
-                                <div class="hoodie-pocket"></div>
-                            </div>
-                            <div class="surfer-arm left-arm">
-                                <div class="surfer-hand"></div>
-                            </div>
-                            <div class="surfer-arm right-arm">
-                                <div class="surfer-hand"></div>
-                            </div>
-                        </div>
-                        <div class="surfer-legs">
-                            <div class="surfer-leg left-leg">
-                                <div class="surfer-shoe"></div>
-                            </div>
-                            <div class="surfer-leg right-leg">
-                                <div class="surfer-shoe"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="character-shadow"></div>
-                </div>
-
                 <div id="startHigh" class="home-best-score"></div>
-
-                <button id="btnPlay" class="btn-play-main">
-                    <span class="play-icon">▶</span>
-                    <span class="play-text">TAP TO PLAY</span>
-                </button>
+                <div class="tap-to-play-text" id="tapToPlayText">TAP TO PLAY</div>
             </div>
 
             <!-- Bottom nav -->
             <nav class="home-bottom-nav">
-                <button class="bnav-item" id="navLeaderboard">
+                <button class="bnav-item overlay-btn" id="navLeaderboard">
                     <span class="bnav-icon">🏆</span>
                     <span class="bnav-label">TOP RUN</span>
                 </button>
-                <button class="bnav-item bnav-center" id="navShop">
+                <button class="bnav-item bnav-center overlay-btn" id="navShop">
                     <span class="bnav-icon">🛒</span>
                     <span class="bnav-label">SHOP</span>
                 </button>
-                <button class="bnav-item" id="navHowToPlay">
+                <button class="bnav-item overlay-btn" id="navHowToPlay">
                     <span class="bnav-icon">❓</span>
                     <span class="bnav-label">HELP</span>
                 </button>
             </nav>
 
-        </div><!-- / .home-ui -->
+        </div>
     </div>
 
     <!-- ═══════════════ SHOP PANEL ═══════════════ -->

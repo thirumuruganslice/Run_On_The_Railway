@@ -1,5 +1,5 @@
 /* ============================================================
-   Texture Generators — Run on the Railway
+   Texture Generators — Railway Runner
    Canvas-based procedural textures for ground, trains, buildings.
    ============================================================ */
 (function () {
@@ -10,7 +10,7 @@
         var c = document.createElement("canvas");
         c.width = 256; c.height = 256;
         var ctx = c.getContext("2d");
-        ctx.fillStyle = "#7A6A58";
+        ctx.fillStyle = "#5C5450";
         ctx.fillRect(0, 0, 256, 256);
         for (var i = 0; i < 1200; i++) {
             var shade = 70 + Math.random() * 50;
@@ -29,7 +29,7 @@
         var c = document.createElement("canvas");
         c.width = 512; c.height = 512;
         var ctx = c.getContext("2d");
-        ctx.fillStyle = "#504030";
+        ctx.fillStyle = "#2A2826";
         ctx.fillRect(0, 0, 512, 512);
         for (var i = 0; i < 3000; i++) {
             var shade = 55 + Math.random() * 40;
@@ -61,15 +61,15 @@
         var c = document.createElement("canvas");
         c.width = 512; c.height = 256;
         var ctx = c.getContext("2d");
-        ctx.fillStyle = isAlt ? "#1A4E8C" : "#C8302A";
+        ctx.fillStyle = isAlt ? "#2A5EA0" : "#C23028";
         ctx.fillRect(0, 0, 512, 256);
         ctx.fillStyle = "rgba(0,0,0,0.3)";
         ctx.fillRect(0, 200, 512, 56);
-        ctx.fillStyle = isAlt ? "#F5C020" : "#F2E8D0";
+        ctx.fillStyle = isAlt ? "#4A80C0" : "#D84030";
         ctx.fillRect(0, 80, 512, 6);
         ctx.fillRect(0, 170, 512, 4);
         for (var i = 0; i < 3; i++) {
-            var cols = ["#E85A50", "#8BBCDA", "#F5C020", "#FAB030", "#3A7AB8"];
+            var cols = ["#D84030", "#4A80C0", "#F5C040", "#E8A018", "#F2A96E"];
             ctx.fillStyle = cols[Math.floor(Math.random() * cols.length)];
             ctx.globalAlpha = 0.12 + Math.random() * 0.15;
             ctx.beginPath();
@@ -112,7 +112,7 @@
         var baseGrad = ctx.createLinearGradient(0, 0, 0, 512);
         baseGrad.addColorStop(0, color);
         baseGrad.addColorStop(0.9, color);
-        baseGrad.addColorStop(1, "#504030");
+        baseGrad.addColorStop(1, "#2A2826");
         ctx.fillStyle = baseGrad;
         ctx.fillRect(0, 0, 256, 512);
 
@@ -150,9 +150,9 @@
                 var lit = Math.random() > 0.28;
                 if (lit) {
                     var wGrad = ctx.createLinearGradient(wx, fy, wx, fy + wh);
-                    wGrad.addColorStop(0, "#FFD880");
-                    wGrad.addColorStop(0.6, "#FFE890");
-                    wGrad.addColorStop(1, "#D0A020");
+                    wGrad.addColorStop(0, "#F4CE88");
+                    wGrad.addColorStop(0.6, "#F0C070");
+                    wGrad.addColorStop(1, "#C07830");
                     ctx.fillStyle = wGrad;
                     ctx.fillRect(wx, fy, ww, wh);
                     ctx.fillStyle = "rgba(255,216,128,0.18)";
@@ -161,7 +161,7 @@
                     ctx.fillRect(wx + ww / 2 - 0.5, fy, 1, wh);
                     ctx.fillRect(wx, fy + wh / 2 - 0.5, ww, 1);
                 } else {
-                    ctx.fillStyle = "#2A3040";
+                    ctx.fillStyle = "#1C2030";
                     ctx.fillRect(wx, fy, ww, wh);
                     ctx.fillStyle = "rgba(106,144,184,0.2)";
                     ctx.fillRect(wx + 2, fy + 2, ww * 0.38, wh * 0.45);

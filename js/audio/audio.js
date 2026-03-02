@@ -1,5 +1,5 @@
 /* ============================================================
-   Audio System (Web Audio API synth + BGM) — Run on the Railway
+   Audio System (Web Audio API synth + BGM) — Railway Runner
    ============================================================ */
 (function () {
     "use strict";

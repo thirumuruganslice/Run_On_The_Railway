@@ -1,5 +1,5 @@
 /* ============================================================
-   Collectibles — Run on the Railway
+   Collectibles — Railway Runner
    Coins and powerups.
    ============================================================ */
 (function () {

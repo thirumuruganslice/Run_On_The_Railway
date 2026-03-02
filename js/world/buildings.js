@@ -1,5 +1,5 @@
 /* ============================================================
-   Buildings — Run on the Railway
+   Buildings — Railway Runner
    Procedural building spawner with rooftop details.
    ============================================================ */
 (function () {

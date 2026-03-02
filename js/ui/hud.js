@@ -1,5 +1,5 @@
 /* ============================================================
-   HUD — Run on the Railway
+   HUD — Railway Runner
    Floating text, milestone celebration, HUD updates.
    ============================================================ */
 (function () {

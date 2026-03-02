@@ -1,5 +1,5 @@
 /* ============================================================
-   Scenery Objects — Run on the Railway
+   Scenery Objects — Railway Runner
    Lamp posts, signals, fences, side trains, decorative arches.
    ============================================================ */
 (function () {

@@ -1,5 +1,5 @@
 /* ============================================================
-   Game Constants — Run on the Railway
+   Game Constants — Railway Runner
    ============================================================ */
 (function () {
     "use strict";

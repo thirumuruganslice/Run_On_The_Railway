@@ -1,5 +1,5 @@
 /* ============================================================
-   DOM References — Run on the Railway
+   DOM References — Railway Runner
    ============================================================ */
 (function () {
     "use strict";
@@ -20,7 +20,6 @@
         startHigh: document.getElementById("startHigh"),
         gameOverScreen: document.getElementById("gameOverScreen"),
         pauseScreen: document.getElementById("pauseScreen"),
-        btnPlay: document.getElementById("btnPlay"),
         btnRestart: document.getElementById("btnRestart"),
         btnHome: document.getElementById("btnHome"),
         btnResume: document.getElementById("btnResume"),
@@ -31,8 +30,6 @@
         newBestBadge: document.getElementById("newBestBadge"),
         goldFlash: document.getElementById("goldFlash"),
         milestoneNotif: document.getElementById("milestoneNotif"),
-        charContainer: document.getElementById("characterContainer"),
-        transitionFlash: document.getElementById("homeTransitionFlash"),
         coinIconHUD: document.querySelector(".coin-icon-hud"),
     };
 })();
